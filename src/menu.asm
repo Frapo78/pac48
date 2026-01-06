@@ -1,4 +1,8 @@
 Menu_Run:
+    ; pulisci schermo e resetta cursore ROM
+    CALL $0DAF               ; ROM CLS
+    CALL Video_Clear         ; azzera bitmap/attributi
+
     LD HL, Menu_Text
 .print_loop:
     LD A, (HL)
@@ -31,6 +35,8 @@ Menu_Run:
 
 .store_mode:
     LD (Input_Mode), A
+    XOR A
+    LD (Pac_Dir), A          ; reset direzione giocatore
     RET
 
 Menu_Text:
