@@ -1,3 +1,5 @@
+Pac_Attr        EQU 64 | (COLOR_BLACK << 3) | COLOR_YELLOW
+
 Player_Update:
     LD A, (Pac_Dir)
     OR A
@@ -49,7 +51,26 @@ Player_Draw:
     LD A, (Pac_Y)
     LD E, A
 
-    LD A, (COLOR_BLACK << 3) | COLOR_YELLOW
-    CALL Video_DrawTile
+    LD A, D
+    ADD A, Maze_OffsetX
+    LD D, A
+    LD A, E
+    ADD A, Maze_OffsetY
+    LD E, A
+
+    LD A, (FrameCounter)
+    AND 7
+    LD L, A
+    LD H, 0
+    ADD HL, HL                 ; word offset
+    LD DE, Pac_FrameTable
+    ADD HL, DE
+    LD E, (HL)
+    INC HL
+    LD D, (HL)
+    EX DE, HL                  ; HL -> sprite
+
+    LD A, Pac_Attr
+    CALL Video_DrawSprite
 
     RET

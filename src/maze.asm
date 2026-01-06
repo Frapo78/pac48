@@ -9,9 +9,12 @@ Maze_CellWall   EQU 1
 Maze_Width      EQU 28
 Maze_Height     EQU 20
 
+Maze_OffsetX    EQU 2
+Maze_OffsetY    EQU 2
+
 ; attributi per rendering
-Maze_AttrPath   EQU COLOR_YELLOW
-Maze_AttrWall   EQU (COLOR_BLUE << 3) | COLOR_YELLOW
+Maze_AttrPath   EQU 64 | (COLOR_BLACK << 3) | COLOR_YELLOW
+Maze_AttrWall   EQU 64 | (COLOR_BLACK << 3) | COLOR_BLUE
 
 ; ------------------------------------------
 ; Disegna l'intero labirinto
@@ -29,18 +32,27 @@ Maze_Draw:
     LD A, (HL)
     CP Maze_CellWall
     JR Z, .draw_wall
-    LD A, Maze_AttrPath
-    JR .draw_tile
-.draw_wall:
-    LD A, Maze_AttrWall
-.draw_tile:
     PUSH HL
     PUSH BC
     PUSH DE
-    CALL Video_DrawTile
+    LD HL, Sprite_Pellet
+    LD A, Maze_AttrPath
+    CALL Maze_DrawAtOffset
     POP DE
     POP BC
     POP HL
+    JR .after_draw
+.draw_wall:
+    PUSH HL
+    PUSH BC
+    PUSH DE
+    LD HL, Sprite_Wall
+    LD A, Maze_AttrWall
+    CALL Maze_DrawAtOffset
+    POP DE
+    POP BC
+    POP HL
+.after_draw:
 
     INC HL
     INC D
@@ -51,6 +63,18 @@ Maze_Draw:
     DEC B
     JR NZ, .row_loop
 
+    RET
+
+; Disegna un tile con sprite e attributo, applicando offset per centrare la mappa
+; In: HL=sprite, A=attr, D=x mappa, E=y mappa
+Maze_DrawAtOffset:
+    LD A, D
+    ADD A, Maze_OffsetX
+    LD D, A
+    LD A, E
+    ADD A, Maze_OffsetY
+    LD E, A
+    CALL Video_DrawSprite
     RET
 
 ; ------------------------------------------

@@ -5,12 +5,15 @@
 
         ORG 32768
 
+        JP START              ; salta oltre i dati inclusi e raggiunge l'entry point
+
 ; ---- include ordine LOGICO
         INCLUDE "config.asm"
         INCLUDE "memory.asm"
         INCLUDE "menu.asm"
         INCLUDE "input.asm"
         INCLUDE "video.asm"
+        INCLUDE "sprites.asm"
         INCLUDE "maze.asm"
         INCLUDE "player.asm"
 
@@ -21,8 +24,8 @@ START:
         DI
         LD SP, 65535
 
-        CALL Video_Clear
         CALL Menu_Run          ; sceglie CtrlMode
+        CALL Video_Clear       ; rimuove menu prima del gioco
 
         EI
 
