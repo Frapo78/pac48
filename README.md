@@ -154,3 +154,5 @@ For AI-assisted contributions, see `AGENTS.md`.
 PAC48 is both a learning project for low-level game development and a practical base for real ZX Spectrum games. It is written with care, clarity, and respect for the hardware.
 
 Have fun hacking it.
+
+Brought to you with ❤️ by Francesco Poltero
