@@ -1,6 +1,5 @@
 Player_Update:
-    CALL Input_Read
-    LD (Pac_Dir), A
+    LD A, (Pac_Dir)
     OR A
     RET Z                  ; nessuna direzione
 
@@ -45,4 +44,12 @@ Player_Update:
     RET
 
 Player_Draw:
+    LD A, (Pac_X)
+    LD D, A
+    LD A, (Pac_Y)
+    LD E, A
+
+    LD A, (COLOR_BLACK << 3) | COLOR_YELLOW
+    CALL Video_DrawTile
+
     RET
