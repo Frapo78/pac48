@@ -5,6 +5,10 @@
 ; TAP:      bin2tap.py -o 32768 -s 32768 -c 32767 pac48.bin pac48.tap
 ; ==========================================
 
+INCLUDE "config.asm"
+INCLUDE "memory.asm"
+CALL Menu_Run
+
         ORG 32768
 
 ; ---- Costanti
