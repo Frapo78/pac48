@@ -64,6 +64,13 @@ Each module has **one clear responsibility**. This structure is intentional and 
 - **Python 3** with **SkoolKit** (for `bin2tap.py`)
 - A ZX Spectrum emulator (e.g., **Fuse**) or real hardware
 
+Example installation on a Debian-like system:
+
+```bash
+sudo apt-get install sjasmplus
+pip install --user skoolkit
+```
+
 ### Build
 
 From the project root:
@@ -73,7 +80,7 @@ sjasmplus src/main.asm build/pac48.bin
 bin2tap.py -o 32768 -s 32768 -c 32767 build/pac48.bin build/pac48.tap
 ```
 
-Or simply:
+Or simply (the script will create `build/` and check for dependencies):
 
 ```bash
 ./tools/build.sh
