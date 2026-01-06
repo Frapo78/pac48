@@ -1,0 +1,12 @@
+# build/output
+build/
+*.bin
+*.tap
+32768
+
+# macOS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
