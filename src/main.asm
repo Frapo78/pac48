@@ -33,6 +33,7 @@ MainLoop:
         HALT
 
         CALL Input_Read        ; aggiorna Dir
+        LD (Pac_Dir), A
         CALL Player_Update     ; aggiorna PacX/PacY
         CALL Video_BeginFrame
         CALL Maze_Draw
