@@ -21,8 +21,8 @@ START:
         DI
         LD SP, 65535
 
-        CALL Video_Clear
         CALL Menu_Run          ; sceglie CtrlMode
+        CALL Video_Clear       ; rimuove menu prima del gioco
 
         EI
 
