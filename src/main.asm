@@ -5,6 +5,8 @@
 
         ORG 32768
 
+        JP START              ; salta oltre i dati inclusi e raggiunge l'entry point
+
 ; ---- include ordine LOGICO
         INCLUDE "config.asm"
         INCLUDE "memory.asm"
