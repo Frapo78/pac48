@@ -13,6 +13,7 @@
         INCLUDE "menu.asm"
         INCLUDE "input.asm"
         INCLUDE "video.asm"
+        INCLUDE "sprites.asm"
         INCLUDE "maze.asm"
         INCLUDE "player.asm"
 
