@@ -1,12 +1,6 @@
 Player_Update:
-    ; legge Input_Read
     CALL Input_Read
-    OR A
-    JR Z, .keep_dir
     LD (Pac_Dir), A
-
-.keep_dir:
-    LD A, (Pac_Dir)
     OR A
     RET Z                  ; nessuna direzione
 
