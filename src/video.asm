@@ -28,16 +28,135 @@ Video_EndFrame:
     RET
 
 ; ------------------------------------------
+; Disegna sprite 8x8 a coordinate pixel.
+; In: D=x pixel, E=y pixel, HL=sprite ptr, A=attr
+Video_DrawSpritePx:
+    PUSH AF
+    PUSH DE
+    PUSH HL
+    LD C, D                 ; C = x pixel
+    LD B, E                 ; B = y pixel
+
+    ; HL = $4000 + ((y&$C0)<<5) + ((y&7)<<8) + ((y&$38)<<2) + x/8
+    LD A, B
+    AND $C0
+    RRCA
+    RRCA
+    RRCA
+    ADD A, SCREEN_ADDR / 256
+    LD H, A
+
+    LD A, B
+    AND 7
+    ADD A, H
+    LD H, A
+
+    LD A, B
+    AND $38
+    ADD A, A
+    ADD A, A
+    LD L, A
+
+    LD A, C
+    SRL A
+    SRL A
+    SRL A
+    ADD A, L
+    LD L, A
+
+    LD A, C
+    AND 7
+    LD C, A                 ; C = shift 0..7
+
+    POP DE                  ; DE -> sprite
+    LD B, 8
+.line_loop_px:
+    LD A, C
+    OR A
+    JR Z, .aligned_px
+
+    PUSH BC
+    LD B, C
+    LD A, (DE)
+.shift_right:
+    SRL A
+    DJNZ .shift_right
+    LD (HL), A
+    POP BC
+
+    PUSH BC
+    LD A, 8
+    SUB C
+    LD B, A
+    LD A, (DE)
+.shift_left:
+    SLA A
+    DJNZ .shift_left
+    INC L
+    LD (HL), A
+    DEC L
+    POP BC
+    JR .next_px
+
+.aligned_px:
+    LD A, (DE)
+    LD (HL), A
+
+.next_px:
+    INC DE
+    CALL Video_NextScanline
+    DJNZ .line_loop_px
+
+    POP DE                  ; coordinate pixel originali
+    POP AF                  ; attr
+    CALL Video_DrawTileForPixel
+    RET
+
+; Avanza HL alla scanline ZX Spectrum successiva.
+Video_NextScanline:
+    INC H
+    LD A, H
+    AND 7
+    RET NZ
+    LD A, L
+    ADD A, 32
+    LD L, A
+    RET C
+    LD A, H
+    SUB 8
+    LD H, A
+    RET
+
+; In: D=x pixel, E=y pixel, A=attr
+Video_DrawTileForPixel:
+    PUSH AF
+    LD A, D
+    SRL A
+    SRL A
+    SRL A
+    LD D, A
+    LD A, E
+    SRL A
+    SRL A
+    SRL A
+    LD E, A
+    POP AF
+    CALL Video_DrawTile
+    RET
+
+; ------------------------------------------
 ; Disegna sprite 8x8 allineato a cella
 ; In: D=x, E=y, HL=sprite ptr, A=attr
 Video_DrawSprite:
     PUSH AF                 ; salva attr
     PUSH DE                 ; salva coordinate mappa
-    LD C, D                 ; conserva x per offset
-    LD IX, HL               ; IX -> sprite
+    PUSH HL                 ; salva sprite ptr
+    LD C, D                 ; C = x cella
+    LD B, E                 ; B = y cella
 
-    ; calcola indirizzo base (riga 0 della cella)
-    LD A, E
+    ; base bitmap per tile 8x8:
+    ; $4000 + (y&24)*256 + (y&7)*32 + x
+    LD A, B
     AND 7
     LD H, 0
     LD L, A
@@ -46,30 +165,26 @@ Video_DrawSprite:
     ADD HL, HL              ; *8
     ADD HL, HL              ; *16
     ADD HL, HL              ; *32
-    ADD HL, HL              ; *64
 
-    LD A, E
+    LD A, B
     AND 24
-    LD D, A
-    LD E, 0
-    ADD HL, DE              ; + (y&24)*256
-
-    LD DE, SCREEN_ADDR
-    ADD HL, DE              ; HL = base bitmap
+    LD H, A
+    LD A, H
+    ADD A, SCREEN_ADDR / 256
+    LD H, A
 
     ; aggiunge x
-    LD A, C
-    LD E, A
-    LD D, 0
-    ADD HL, DE
+    LD A, L
+    ADD A, C
+    LD L, A
 
+    POP DE                  ; DE -> sprite
     LD B, 8                 ; 8 righe
 .line_loop:
-    LD A, (IX+0)
+    LD A, (DE)
     LD (HL), A
-    INC IX
-    LD DE, 32
-    ADD HL, DE
+    INC DE
+    INC H                   ; prossima scanline dentro la cella: +256
     DJNZ .line_loop
 
     POP DE                  ; ripristina coordinate

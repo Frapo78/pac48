@@ -26,6 +26,7 @@ START:
 
         CALL Menu_Run          ; sceglie CtrlMode
         CALL Video_Clear       ; rimuove menu prima del gioco
+        CALL Maze_Draw
 
         EI
 
@@ -36,7 +37,10 @@ MainLoop:
         HALT
 
         CALL Input_Read        ; aggiorna Dir
-        LD (Pac_Dir), A
+        OR A
+        JR Z, .keep_dir
+        LD (Pac_ReqDir), A
+.keep_dir:
         CALL Player_Update     ; aggiorna PacX/PacY
         CALL Video_BeginFrame
         CALL Maze_Draw

@@ -2,6 +2,17 @@
 ; SPRITES E DATI GRAFICI
 ; =========================
 
+; Sprite vuoto: cancella un tile 8x8
+Sprite_Empty:
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+
 ; Sprite muro: blocco pieno con bordo morbido
 Sprite_Wall:
     DEFB %11111111
@@ -75,5 +86,161 @@ Pac_Frame4:
     DEFB %00110000
     DEFB %00000000
 
-Pac_FrameTable:
+Pac_FrameLeft0:
+    DEFB %00111100
+    DEFB %01111111
+    DEFB %01111111
+    DEFB %01111111
+    DEFB %01111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameLeft1:
+    DEFB %00111100
+    DEFB %00111110
+    DEFB %00111111
+    DEFB %00011111
+    DEFB %00111111
+    DEFB %00111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameLeft2:
+    DEFB %00111100
+    DEFB %00111110
+    DEFB %00011111
+    DEFB %00001111
+    DEFB %00011111
+    DEFB %00111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameLeft3:
+    DEFB %00011100
+    DEFB %00011110
+    DEFB %00001111
+    DEFB %00000111
+    DEFB %00001111
+    DEFB %00011110
+    DEFB %00011100
+    DEFB %00000000
+
+Pac_FrameLeft4:
+    DEFB %00001100
+    DEFB %00001110
+    DEFB %00000111
+    DEFB %00000111
+    DEFB %00000111
+    DEFB %00001110
+    DEFB %00001100
+    DEFB %00000000
+
+Pac_FrameUp0:
+    DEFB %00111100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameUp1:
+    DEFB %00011000
+    DEFB %00111100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameUp2:
+    DEFB %00000000
+    DEFB %00100100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameUp3:
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %01000010
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameUp4:
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %10000001
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameDown0:
+    DEFB %00111100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00000000
+
+Pac_FrameDown1:
+    DEFB %00111100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00111100
+    DEFB %00011000
+    DEFB %00000000
+
+Pac_FrameDown2:
+    DEFB %00111100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01111110
+    DEFB %00100100
+    DEFB %00000000
+    DEFB %00000000
+
+Pac_FrameDown3:
+    DEFB %00111100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %11111111
+    DEFB %01000010
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+
+Pac_FrameDown4:
+    DEFB %00111100
+    DEFB %01111110
+    DEFB %11111111
+    DEFB %10000001
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+    DEFB %00000000
+
+Pac_FrameTableRight:
     DW Pac_Frame0, Pac_Frame1, Pac_Frame2, Pac_Frame3, Pac_Frame4, Pac_Frame3, Pac_Frame2, Pac_Frame1
+Pac_FrameTableLeft:
+    DW Pac_FrameLeft0, Pac_FrameLeft1, Pac_FrameLeft2, Pac_FrameLeft3, Pac_FrameLeft4, Pac_FrameLeft3, Pac_FrameLeft2, Pac_FrameLeft1
+Pac_FrameTableUp:
+    DW Pac_FrameUp0, Pac_FrameUp1, Pac_FrameUp2, Pac_FrameUp3, Pac_FrameUp4, Pac_FrameUp3, Pac_FrameUp2, Pac_FrameUp1
+Pac_FrameTableDown:
+    DW Pac_FrameDown0, Pac_FrameDown1, Pac_FrameDown2, Pac_FrameDown3, Pac_FrameDown4, Pac_FrameDown3, Pac_FrameDown2, Pac_FrameDown1

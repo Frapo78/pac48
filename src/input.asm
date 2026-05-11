@@ -6,7 +6,9 @@ Input_Read:
     JR Z, .read_keyboard
     CP 1
     JR Z, .read_kempston
-    JR .read_sinclair
+    CP 2
+    JR Z, .read_sinclair1
+    JR .read_sinclair2
 
 .read_keyboard:
     LD BC, $FBFE            ; Q row
@@ -25,6 +27,21 @@ Input_Read:
     JR Z, .dir_left
     BIT 0, A
     JR Z, .dir_right
+
+    LD BC, $F7FE            ; 1-5 row: supporto cursor 5 = left
+    IN A, (C)
+    BIT 4, A
+    JR Z, .dir_left
+
+    LD BC, $EFFE            ; 6-0 row: 6=down, 7=up, 8=right
+    IN A, (C)
+    BIT 4, A
+    JR Z, .dir_down
+    BIT 3, A
+    JR Z, .dir_up
+    BIT 2, A
+    JR Z, .dir_right
+
     XOR A
     RET
 
@@ -32,28 +49,17 @@ Input_Read:
     LD BC, PORT_KEMPSTON
     IN A, (C)
     BIT 3, A                ; up
-    JR Z, .dir_up
+    JR NZ, .dir_up
     BIT 2, A                ; down
-    JR Z, .dir_down
+    JR NZ, .dir_down
     BIT 1, A                ; left
-    JR Z, .dir_left
+    JR NZ, .dir_left
     BIT 0, A                ; right
-    JR Z, .dir_right
+    JR NZ, .dir_right
     XOR A
     RET
 
-.read_sinclair:
-    LD BC, $F7FE            ; Sinclair 2 (1-5)
-    IN A, (C)
-    BIT 0, A                ; 1 = up
-    JR Z, .dir_up
-    BIT 1, A                ; 2 = down
-    JR Z, .dir_down
-    BIT 2, A                ; 3 = left
-    JR Z, .dir_left
-    BIT 3, A                ; 4 = right
-    JR Z, .dir_right
-
+.read_sinclair1:
     LD BC, $EFFE            ; Sinclair 1 (6-0)
     IN A, (C)
     BIT 4, A                ; 6 = up
@@ -63,6 +69,20 @@ Input_Read:
     BIT 2, A                ; 8 = left
     JR Z, .dir_left
     BIT 1, A                ; 9 = right
+    JR Z, .dir_right
+    XOR A
+    RET
+
+.read_sinclair2:
+    LD BC, $F7FE            ; Sinclair 2 (1-5)
+    IN A, (C)
+    BIT 0, A                ; 1 = up
+    JR Z, .dir_up
+    BIT 1, A                ; 2 = down
+    JR Z, .dir_down
+    BIT 2, A                ; 3 = left
+    JR Z, .dir_left
+    BIT 3, A                ; 4 = right
     JR Z, .dir_right
 
     XOR A

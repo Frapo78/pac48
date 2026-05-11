@@ -21,7 +21,9 @@ Menu_Run:
     BIT 1, A                ; '2' -> Kempston
     JR Z, .choose_kempston
     BIT 2, A                ; '3' -> Sinclair
-    JR Z, .choose_sinclair
+    JR Z, .choose_sinclair1
+    BIT 3, A                ; '4' -> Sinclair 2
+    JR Z, .choose_sinclair2
     JR .wait_key
 
 .choose_keyboard:
@@ -30,18 +32,31 @@ Menu_Run:
 .choose_kempston:
     LD A, 1
     JR .store_mode
-.choose_sinclair:
+.choose_sinclair1:
     LD A, 2
+    JR .store_mode
+.choose_sinclair2:
+    LD A, 3
 
 .store_mode:
     LD (Input_Mode), A
     XOR A
     LD (Pac_Dir), A          ; reset direzione giocatore
+    LD (Pac_ReqDir), A
+
+.wait_release:
+    LD BC, $F7FE             ; riga tasti 1-5
+    IN A, (C)
+    AND %00001111
+    CP %00001111
+    JR NZ, .wait_release
     RET
 
 Menu_Text:
-    DB "PAC48 - Seleziona controllo", 13
+    DB "PAC48 0.3.4-beta", 13
+    DB "Seleziona controllo", 13
     DB "1) Q/A/O/P", 13
     DB "2) Kempston", 13
-    DB "3) Sinclair", 13
+    DB "3) Sinclair 1", 13
+    DB "4) Sinclair 2", 13
     DB 0
