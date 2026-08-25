@@ -55,12 +55,25 @@ Player_Update:
 .done:
     RET
 
-; Try to change direction only when the player is aligned to the 8x8 grid.
-; Requested direction stays buffered until a legal turn becomes available.
+; Requested perpendicular turns remain buffered until an aligned legal node.
+; A 180-degree reversal is safe within the same corridor, so apply it
+; immediately instead of waiting up to seven pixels for the next node.
 Player_TryRequestedDir:
     LD A, (Pac_ReqDir)
     OR A
     RET Z
+    LD B, A
+
+    LD A, (Pac_Dir)
+    OR A
+    JR Z, .aligned_turn
+    ADD A, B
+    CP 3                           ; up + down
+    JR Z, .reverse_now
+    CP 7                           ; left + right
+    JR Z, .reverse_now
+
+.aligned_turn:
     CALL Player_IsAligned
     OR A
     RET Z
@@ -70,6 +83,12 @@ Player_TryRequestedDir:
     OR A
     RET Z
     LD A, (Pac_ReqDir)
+    LD (Pac_Dir), A
+    LD (Pac_FacingDir), A
+    RET
+
+.reverse_now:
+    LD A, B
     LD (Pac_Dir), A
     LD (Pac_FacingDir), A
     RET

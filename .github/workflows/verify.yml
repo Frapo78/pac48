@@ -70,12 +70,15 @@ jobs:
           test -s src/generated/build_info.asm
           test -s build/screen_label.txt
           grep -F "B${BUILD_ID}" build/screen_label.txt
+          test -s build/control_harness.trace.log
+          test -s build/control_harness.z80
           test -s build/runtime_harness.trace.log
           test -s build/perf_results.txt
           test -s build/tap_load.z80
           test -s build/tap_load.log
           wc -c build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap" "build/pac48-${VERSION}-b${BUILD_ID}.tap"
           cat build/screen_label.txt
+          tail -n 10 build/control_harness.trace.log
           cat build/perf_results.txt
           tail -n 30 build/tap_load.log
 
@@ -103,14 +106,15 @@ jobs:
             echo
             echo "Version: ${VERSION}"
             echo "Build ID: ${BUILD_ID}"
-            echo "On-screen stamp: ${SCREEN_LABEL}"
+            echo "On-screen stamp: ${SCREEN_LABEL} (ZX Spectrum ROM 8x8 font)"
             echo "Commit: ${GITHUB_SHA}"
             echo "Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Target: ZX Spectrum 48K"
             echo
             echo "Verification completed before publication:"
             echo "- deterministic structural and architecture checks"
-            echo "- generated version/build identity checks"
+            echo "- generated version/build identity + ROM-font guard"
+            echo "- headless Z80 control-semantics harness"
             echo "- renderer reference-model tests"
             echo "- sjasmplus assembly with zero errors/warnings"
             echo "- headless 48K Z80 runtime harness"
@@ -139,6 +143,8 @@ jobs:
             build/screen_label.txt
             src/generated/pac_shifted.asm
             src/generated/build_info.asm
+            build/control_harness.trace.log
+            build/control_harness.z80
             build/runtime_harness.trace.log
             build/runtime_harness.z80
             build/perf_results.txt

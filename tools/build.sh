@@ -56,9 +56,14 @@ if [[ ! "$BUILD_ID" =~ ^[0-9A-F]{7}$ && ! "$BUILD_ID" =~ ^D[0-9A-F]{6}$ ]]; then
 fi
 
 SCREEN_LABEL="V${DISPLAY_VERSION} B${BUILD_ID}"
-LABEL_WIDTH=$(( ${#SCREEN_LABEL} * 4 - 1 ))
-LABEL_X=$(( (256 - LABEL_WIDTH) / 2 ))
+LABEL_CHARS=${#SCREEN_LABEL}
+LABEL_COLUMN=$(( (32 - LABEL_CHARS) / 2 ))
 BUILD_SPECIFIC_TAP="$BUILD_DIR/pac48-${VERSION}-b${BUILD_ID}.tap"
+
+if (( LABEL_CHARS > 32 || LABEL_COLUMN < 0 )); then
+  echo "ERROR: screen label '$SCREEN_LABEL' does not fit the 32-column ROM font row" >&2
+  exit 1
+fi
 
 printf '%s\n' "$BUILD_ID" > "$BUILD_DIR/build_id.txt"
 printf '%s\n' "$SCREEN_LABEL" > "$BUILD_DIR/screen_label.txt"
@@ -72,8 +77,8 @@ Build_MenuTitle:
 Build_ScreenLabel:
     DB "${SCREEN_LABEL}",0
 
-Build_ScreenLabelX     EQU ${LABEL_X}
-Build_ScreenLabelWidth EQU ${LABEL_WIDTH}
+Build_ScreenLabelColumn EQU ${LABEL_COLUMN}
+Build_ScreenLabelChars  EQU ${LABEL_CHARS}
 
 Build_VersionText:
     DB "${VERSION}",0
@@ -96,7 +101,8 @@ python3 tools/check_build_identity.py \
   --version VERSION \
   --build-info "$GENERATED_BUILD_INFO" \
   --main src/main.asm \
-  --menu src/menu.asm
+  --menu src/menu.asm \
+  --hud src/hud.asm
 
 echo "[3/9] Running renderer reference-model tests..."
 python3 tools/test_render_model.py
@@ -112,8 +118,9 @@ python3 tools/check_project.py \
   --binary "$OUTPUT_BIN" \
   --max-binary-bytes "$MAX_BIN_BYTES"
 
-echo "[5/9] Running headless Z80 runtime harness..."
-chmod +x tools/run_runtime_tests.sh
+echo "[5/9] Running headless Z80 control/runtime harnesses..."
+chmod +x tools/run_control_tests.sh tools/run_runtime_tests.sh
+tools/run_control_tests.sh
 tools/run_runtime_tests.sh
 
 echo "[6/9] Measuring Render_Commit with 48K contention..."

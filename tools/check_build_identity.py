@@ -23,6 +23,7 @@ def main() -> int:
     parser.add_argument("--build-info", type=pathlib.Path, required=True)
     parser.add_argument("--main", type=pathlib.Path, required=True)
     parser.add_argument("--menu", type=pathlib.Path, required=True)
+    parser.add_argument("--hud", type=pathlib.Path, required=True)
     args = parser.parse_args()
 
     try:
@@ -30,6 +31,7 @@ def main() -> int:
         build_info = args.build_info.read_text(encoding="utf-8")
         main_asm = args.main.read_text(encoding="utf-8")
         menu_asm = args.menu.read_text(encoding="utf-8")
+        hud_asm = args.hud.read_text(encoding="utf-8")
 
         if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
             fail(f"{args.version}: unsupported VERSION format: {version!r}")
@@ -45,25 +47,34 @@ def main() -> int:
         if not re.fullmatch(rf"V{re.escape(core)} B(?:[0-9A-F]{{7}}|D[0-9A-F]{{6}})", label):
             fail(f"generated screen label has unexpected format: {label!r}")
 
-        x_match = re.search(r"Build_ScreenLabelX\s+EQU\s+(\d+)", build_info)
-        width_match = re.search(r"Build_ScreenLabelWidth\s+EQU\s+(\d+)", build_info)
-        if not x_match or not width_match:
-            fail("generated build info is missing label X/width constants")
-        x = int(x_match.group(1))
-        width = int(width_match.group(1))
-        if width != len(label) * 4 - 1:
-            fail("generated label width does not match 3x5 font spacing")
-        if x != (256 - width) // 2:
-            fail("generated label is not horizontally centered")
-        if x < 0 or x + width > 256:
-            fail("generated label does not fit the Spectrum screen")
+        col_match = re.search(r"Build_ScreenLabelColumn\s+EQU\s+(\d+)", build_info)
+        chars_match = re.search(r"Build_ScreenLabelChars\s+EQU\s+(\d+)", build_info)
+        if not col_match or not chars_match:
+            fail("generated build info is missing ROM-font column/character constants")
+        column = int(col_match.group(1))
+        chars = int(chars_match.group(1))
+        if chars != len(label):
+            fail("generated label character count does not match screen label")
+        if column != (32 - chars) // 2:
+            fail("generated ROM-font label is not horizontally centered")
+        if column < 0 or column + chars > 32:
+            fail("generated ROM-font label does not fit the Spectrum screen")
 
         if 'INCLUDE "generated/build_info.asm"' not in main_asm:
             fail("src/main.asm does not include generated build metadata")
         if 'INCLUDE "hud.asm"' not in main_asm:
-            fail("src/main.asm does not include the mini-HUD renderer")
+            fail("src/main.asm does not include the HUD renderer")
         if not re.search(r"\bCALL\s+HUD_DrawBuildStamp\b", main_asm, flags=re.IGNORECASE):
             fail("src/main.asm does not draw the version/build stamp at startup")
+
+        # Build identity must use the real Spectrum ROM/system font, not a tiny
+        # custom font that becomes unreadable in emulator screenshots.
+        if not re.search(r"ROM_FONT_ADDR\s+EQU\s+\$3C00", hud_asm, flags=re.IGNORECASE):
+            fail("src/hud.asm does not use the ZX Spectrum ROM font at $3C00")
+        if not re.search(r"\bCALL\s+Video_DrawSprite\b", hud_asm, flags=re.IGNORECASE):
+            fail("src/hud.asm does not render ROM 8x8 glyphs through the tile renderer")
+        if "HUD_Glyphs:" in hud_asm or "HUD_DrawGlyph3x5:" in hud_asm:
+            fail("custom 3x5 mini-font returned; screenshots require the ROM system font")
 
         # Semantic version strings belong in VERSION/generated output only.
         if re.search(r"PAC48\s+\d+\.\d+\.\d+", menu_asm):
