@@ -2,7 +2,7 @@
 
 This is the canonical work queue for PAC48.
 
-Read in this order before implementation:
+Read before implementation:
 
 1. `AGENTS.md`
 2. `docs/ARCHITECTURE.md`
@@ -14,253 +14,175 @@ Read in this order before implementation:
 
 ## Agent workflow
 
-- Select the highest-priority unblocked task unless the user explicitly requests another.
-- Inspect every listed file before editing.
-- Keep scope within the task.
-- Use the stable `P48-###` ID in commits/PRs when practical.
-- Never renumber or reuse IDs.
-- If new work is discovered, create a new task rather than silently expanding scope.
-- Run `./tools/build.sh` for every code change.
-- Use `docs/TESTING.md` to report exactly which verification layers ran.
-- Rendering, timing, input, loader and gameplay changes require emulator/real-hardware verification when their acceptance criteria say so.
-- Code written but not fully verified is `VERIFY`, not `DONE`.
-- Update `CHANGELOG.md` for meaningful changes.
-- Record subtle regressions/failures in `docs/INCIDENTS.md` and link the preventive guard.
+- select the highest-priority unblocked task unless the user explicitly selects another;
+- inspect all listed files and related incidents before editing;
+- use stable `P48-###` IDs and never reuse/renumber them;
+- create a new task for newly discovered scope;
+- run the canonical build for code/build changes;
+- update changelog and incident records when applicable;
+- code without required evidence is `VERIFY`, not `DONE`.
 
-## Status values
+## Status
 
-- `READY` - understood and ready.
-- `IN_PROGRESS` - actively being implemented.
-- `BLOCKED` - dependency or decision prevents work.
-- `VERIFY` - implementation exists but required verification is incomplete.
-- `DONE` - implementation and required verification complete.
-- `WONTFIX` - intentionally not implemented, with reason.
+- `READY` — ready to implement
+- `IN_PROGRESS` — being implemented
+- `BLOCKED` — dependency/decision prevents work
+- `VERIFY` — implementation exists but required evidence remains
+- `DONE` — implementation and required verification complete
+- `WONTFIX` — intentionally rejected, rationale required
 
-## Priorities
+## Priority
 
-- `P0` - correctness/corruption; fix first.
-- `P1` - architecture/compatibility/gameplay foundation.
-- `P2` - maintainability, tooling, profiling, development quality.
-- `P3` - later enhancement.
+- `P0` correctness/corruption
+- `P1` architecture/compatibility/gameplay foundation
+- `P2` maintainability/tooling/performance
+- `P3` later enhancement
 
-## Current execution order
+## Current verified baseline — 2026-08-25
 
-The renderer migration is implemented but not yet fully verified. Do not start broad gameplay work until the `VERIFY` items below are either `DONE` or explicitly accepted with documented risk.
+Canonical GitHub Actions currently proves:
 
-Recommended order:
+- V1 structural/architecture checks PASS;
+- sjasmplus 1.23.1 assembly: 0 errors / 0 warnings;
+- headless 48K Z80 runtime harness PASS;
+- binary size 8042 bytes;
+- conservative upper-RAM headroom 20630 bytes;
+- TAP size 8122 bytes;
+- fresh-48K simulated tape loading reaches `PC=32768 ($8000)`;
+- V4 `Render_Commit` timing with 48K contention:
+  - dirty1: 4320 T-states;
+  - dirty2: 5455 T-states;
+  - arbitrary dirty4: 7800 T-states;
+- verified release publication produces `pac48-latest.tap`, versioned TAP, checksum and build metadata.
 
-`P48-001/P48-002 -> P48-010/P48-011/P48-012/P48-013 -> P48-003/P48-004 -> P48-008/P48-014 -> P48-009`
-
-`P48-006` and `P48-007` remain independent. Complete `P48-016` before introducing actor art that needs explicit opaque-zero pixels.
+Manual visual/control V3 remains the main gate before broad gameplay expansion. V5 hardware testing remains a release-quality goal.
 
 ---
 
-## P48-001 - Preserve maze coordinates across attribute drawing
+## P48-001 — Preserve maze coordinates across attribute drawing
 
 - **Status:** `VERIFY`
 - **Priority:** `P0`
-- **Type:** rendering correctness
 - **Files:** `src/maze.asm`, `src/video.asm`
-- **Depends on:** none
 - **Incident:** `INC-2026-001`
 
-### Implemented
+Implemented: explicit `DE` preservation/contracts in video/maze drawing.
 
-- `Video_DrawTile` preserves caller `DE`.
-- `Maze_DrawTileAtOffset` and `Maze_DrawAtOffset` explicitly preserve maze-coordinate `DE`.
-- public routine comments document the contract.
+Remaining:
 
-### Acceptance
-
-- [x] attribute and bitmap paths use a documented coordinate contract
-- [x] `Maze_DrawCell` is protected from the original clobber pattern
-- [x] register contracts documented
-- [ ] V2 canonical build passes
-- [ ] V3 maze/pellet rendering visually verified
-
-### Verification notes
-
-Code implemented 2026-08-25. Build/runtime verification still required.
+- [x] V1/V2 canonical build/runtime/TAP-load PASS
+- [ ] V3 visually confirm maze/pellet restoration has no coordinate corruption
 
 ---
 
-## P48-002 - Correct Sinclair 1 and Sinclair 2 directions
+## P48-002 — Correct Sinclair 1 and Sinclair 2 directions
 
 - **Status:** `VERIFY`
 - **Priority:** `P0`
-- **Type:** input correctness
 - **Files:** `src/input.asm`
-- **Depends on:** none
 - **Incident:** `INC-2026-002`
 
-### Implemented
+Implemented correct Interface 2 mappings while retaining public direction enum and `Input_Mode` values.
 
-- Sinclair 1 (`6 7 8 9 0`) now maps left/right/down/up/fire.
-- Sinclair 2 (`1 2 3 4 5`) now maps left/right/down/up/fire.
-- public direction enum and `Input_Mode` values are unchanged.
+Remaining:
 
-### Acceptance
-
-- [x] source bit-to-direction mapping corrected
-- [x] Q/A/O/P path unchanged
-- [x] Kempston path unchanged
-- [ ] V2 build passes
-- [ ] V3 both Sinclair modes manually smoke-tested
-
-### Verification notes
-
-Code implemented 2026-08-25. Manual device/emulator verification still required.
+- [x] V1/V2 PASS
+- [ ] V3 manually test all four directions in both Sinclair modes
 
 ---
 
-## P48-003 - Remove full-maze redraw from gameplay frames
+## P48-003 — Remove full-maze redraw from gameplay frames
 
 - **Status:** `VERIFY`
 - **Priority:** `P1`
-- **Type:** rendering architecture
 - **Files:** `src/main.asm`, `src/maze.asm`, `src/render.asm`, `src/player.asm`
-- **Depends on:** `P48-010`, `P48-011`, `P48-012`
 - **Incident:** `INC-2026-003`
 
-### Implemented
+Implemented dirty restoration, bounded/de-duplicated dirty cells, initial-only full maze draw, and single bitmap+attribute restore per dirty cell.
 
-- `Maze_Draw` remains in startup/level initialization only.
-- `Render_Commit` restores previous dirty maze cells via `Maze_DrawCell`.
-- `Render_Prepare` builds a bounded, de-duplicated dirty-cell list for the prepared 8x8 player sprite.
-- normal frame path no longer calls `Maze_Draw`.
-- maze restoration uses one bitmap+attribute operation per dirty cell; the earlier redundant attribute write was removed.
+Evidence:
 
-### Acceptance
-
-- [x] `Maze_Draw` absent from normal per-frame gameplay path
-- [x] dirty list bounded and de-duplicated in code
-- [x] no duplicate attribute write in normal `Maze_DrawCell` restoration path
-- [ ] V3 player leaves no trails
-- [ ] V3 dirty cells restore current pellet/empty state visually
-- [ ] V3 horizontal/vertical/turning movement visually correct
-- [ ] V2 build passes
-- [ ] V4 common/worst dirty count and timing recorded
-
-### Verification notes
-
-Implementation complete; runtime/timing verification pending.
+- [x] architecture guard rejects `Maze_Draw` in `MainLoop`
+- [x] V2 PASS
+- [x] V4 dirty1/dirty2/dirty4 timings recorded and under budget
+- [ ] V3 verify no trails, correct turns, and current maze state restoration
 
 ---
 
-## P48-004 - Stabilize attribute ownership for moving actors
+## P48-004 — Stabilize attribute ownership for moving actors
 
 - **Status:** `VERIFY`
 - **Priority:** `P1`
-- **Type:** Spectrum attribute policy
 - **Files:** `src/maze.asm`, `src/render.asm`, `src/video.asm`
-- **Depends on:** `P48-012`, `P48-003`
 
-### Implemented
+Implemented: moving actors do not write attributes; walkable cells use compatible visibility attributes; walls remain maze-owned.
 
-- moving actors do not write attribute memory in `render.asm`;
-- empty and pellet corridor cells both use yellow ink on black paper;
-- wall attributes remain maze-owned;
-- dirty restoration restores maze bitmap/attributes through `Maze_DrawCell`.
+Remaining:
 
-### Acceptance
-
-- [x] actor renderer performs no attribute writes
-- [x] walkable cells use a player-visible attribute baseline
-- [x] wall attributes remain maze-owned
-- [ ] V3 actor visible at every sub-cell X/Y phase
-- [ ] V3 no permanent attribute trails
-- [ ] V2/V3 build and visual tests pass
-
-### Verification notes
-
-Source policy implemented; visual verification pending.
+- [x] V2 PASS
+- [ ] V3 all pixel phases show no permanent attribute trails/clash regressions
 
 ---
 
-## P48-005 - Synchronize documentation with pixel movement
+## P48-005 — Synchronize documentation with pixel movement
 
 - **Status:** `DONE`
 - **Priority:** `P1`
-- **Type:** documentation
 
-### Completed
-
-- [x] pixel/sub-tile movement documented
-- [x] `Pac_ReqDir` documented
-- [x] repository structure documented
-- [x] agent workflow points at canonical TODO
+Pixel/sub-tile movement, requested direction, renderer ownership, repository layout, and AI workflow are documented.
 
 ---
 
-## P48-006 - Add exact GPL license file
+## P48-006 — Add exact GPL license file
 
 - **Status:** `BLOCKED`
 - **Priority:** `P1`
-- **Type:** legal/project metadata
 - **Files:** `LICENSE`, `README.md`
 - **Depends on:** project owner chooses exact GPL variant
 
-### Resolution
-
-After explicit owner choice (for example `GPL-3.0-only` or `GPL-3.0-or-later`), add canonical license text and make README match exactly. Agents must not guess the variant.
+Owner must explicitly choose e.g. `GPL-3.0-only` or `GPL-3.0-or-later`; agents must not guess.
 
 ---
 
-## P48-007 - Make VERSION the single release-version source
+## P48-007 — Make VERSION the single release-version source
 
 - **Status:** `READY`
 - **Priority:** `P2`
-- **Type:** build maintainability
 - **Files:** `VERSION`, `tools/build.sh`, `src/menu.asm`
 
-### Problem
-
-`VERSION` and the menu still duplicate the version string.
-
-### Acceptance
-
-- [ ] one human-edited version source
-- [ ] menu uses generated value
-- [ ] clean build succeeds
+Generate the menu/version assembly data from `VERSION` so release version is edited in one place only.
 
 ---
 
-## P48-008 - Establish repeatable verification baseline
+## P48-008 — Establish repeatable verification baseline
 
 - **Status:** `VERIFY`
 - **Priority:** `P2`
-- **Type:** testing/tooling
-- **Files:** `tools/check_project.py`, `tools/build.sh`, `docs/TESTING.md`
+- **Files:** build/test tools, `docs/TESTING.md`, CI
 
-### Implemented
+Implemented:
 
-- `docs/TESTING.md` defines V0 static, V1 structural, V2 build, V3 emulator, V4 cycle-aware timing, and V5 hardware layers;
-- build always runs sprite generation before assembly;
-- checker enforces exactly 20 maze rows x 28 cells and valid cell values;
-- checker enforces 160 unique generated phases, exactly 8 scanlines x 4 bytes per phase, and exact 40-pointer tables for each direction;
-- post-assembly check enforces a 28,672-byte binary ceiling, reserving upper-RAM stack/headroom.
+- deterministic V1 guards;
+- canonical V2 assembly/runtime/TAP-load pipeline;
+- GitHub-hosted reproducible toolchain;
+- documented V3/V4/V5 procedures.
 
-### Acceptance
+Remaining:
 
-- [x] deterministic structural regression checks exist
-- [x] generated sprite assets validated structurally
-- [x] binary/headroom guard exists
-- [x] emulator/hardware/timing checklist documented
-- [ ] V2 exact current build result recorded
-- [ ] V3 protocol completed at least once on current renderer
+- [x] V1 PASS
+- [x] V2 PASS, including fresh-48K TAP load to `$8000`
+- [x] automated V4 baseline PASS
+- [ ] complete and record V3 manual visual/control suite on current renderer
 
 ---
 
-## P48-009 - Implement first complete gameplay loop
+## P48-009 — Implement first complete gameplay loop
 
 - **Status:** `BLOCKED`
 - **Priority:** `P2`
-- **Type:** gameplay milestone
-- **Depends on:** verified completion/acceptance of `P48-001`, `P48-002`, `P48-003`, `P48-004`, `P48-012`, `P48-014`
+- **Depends on:** acceptance/verification of P48-001, P48-002, P48-003, P48-004, P48-012
 
-### Goal
-
-After renderer/input foundation is verified, create child tasks for:
+After foundation verification create child tasks for:
 
 1. pellet consumption
 2. remaining-pellet count
@@ -268,221 +190,151 @@ After renderer/input foundation is verified, create child tasks for:
 4. level complete
 5. lives
 6. one deterministic enemy
-7. actor collision/life loss
+7. player/enemy collision and life loss
 8. game over/restart
-9. further enemy personalities
+9. additional enemy personalities
 10. energizers/frightened mode and sound
 
 ---
 
-## P48-010 - Dedicated render module and prepare/commit phases
+## P48-010 — Dedicated render module and prepare/commit phases
 
 - **Status:** `VERIFY`
 - **Priority:** `P1`
-- **Type:** core architecture migration
 - **Files:** `src/main.asm`, `src/render.asm`, `src/memory.asm`
-- **Depends on:** `P48-001`
 
-### Implemented
+Implemented module boundary and `HALT -> Render_Commit -> simulation -> Render_Prepare` pipeline.
 
-- `render.asm` is a real module included by `main.asm`;
-- startup initializes renderer and prepares the first descriptor;
-- frame order is `HALT -> Render_Commit -> input/update -> Render_Prepare`;
-- renderer owns composition and dirty bookkeeping;
-- player owns simulation only.
-
-### Acceptance
-
-- [x] `render.asm` included
-- [x] prepare/commit public interfaces documented
-- [x] renderer does not read input ports
-- [x] screen writes isolated to render/video/maze restoration paths
-- [ ] V2 build passes
-- [ ] V3 runtime smoke test passes
+- [x] V1/V2 PASS
+- [x] V4 timing PASS
+- [ ] V3 visual runtime confirmation
 
 ---
 
-## P48-011 - Generate masked pre-shifted 8x8 actor assets
-
-- **Status:** `VERIFY`
-- **Priority:** `P1`
-- **Type:** asset/build architecture
-- **Files:** `tools/gen_shifted_sprites.py`, `src/sprites.asm`, generated `src/generated/pac_shifted.asm`, `tools/build.sh`, `.gitignore`
-- **Depends on:** none
-
-### Implemented
-
-- Python-stdlib generator extracts all 20 canonical player frames;
-- emits eight phases per frame = 160 generated sprite phases;
-- each generated row stores `maskL,imageL,maskR,imageR`;
-- internal generator assertions validate phase 0 and mask/image invariants;
-- build creates the generated include before assembly;
-- generated directory is ignored by Git;
-- obsolete handwritten mobile-actor `Pac_FrameTable*` tables were removed so generated tables are authoritative.
-
-### Acceptance
-
-- [x] eight phases generated for every required frame
-- [x] phase-0 invariant encoded in generator self-check
-- [x] masks are generated as inverse opaque occupancy for current Pac art
-- [x] clean build path generates the include before assembly
-- [x] structural checker validates phase row layout and exact pointer tables
-- [ ] V2 actual build succeeds with `sjasmplus`
-
----
-
-## P48-012 - Replace runtime-shift drawing with masked renderer
-
-- **Status:** `VERIFY`
-- **Priority:** `P1`
-- **Type:** renderer implementation
-- **Files:** `src/render.asm`, `src/video.asm`, generated sprite data
-- **Depends on:** `P48-010`, `P48-011`
-- **Incident:** `INC-2026-003`
-
-### Implemented
-
-- old `Video_DrawSpritePx` runtime-shift path removed from `video.asm`;
-- 192-entry line-address LUT allocated in upper RAM and initialized at startup;
-- phase is selected during prepare using `x & 7`;
-- commit performs `(screen AND mask) OR image` over two bytes per row;
-- no per-row source shifting in normal actor path;
-- clipping is kept out of the hot loop under maze position invariants.
-
-### Acceptance
-
-- [x] normal actor hot path has no runtime bit shifting
-- [x] masked compositing implemented
-- [x] screen-line LUT used
-- [ ] V3 actor verified at every x phase without maze damage
-- [ ] V3 pellets/background visually preserved outside actor silhouette
-- [ ] V2 build passes
-- [ ] V4 timing recorded for 1 actor and planned maximum actor count
-
----
-
-## P48-013 - Move player drawing out of player module
-
-- **Status:** `VERIFY`
-- **Priority:** `P1`
-- **Type:** module ownership
-- **Files:** `src/player.asm`, `src/render.asm`, `src/main.asm`
-- **Depends on:** `P48-010`, `P48-012`
-
-### Implemented
-
-`src/player.asm` now contains movement/collision-coordinate simulation only. Player sprite selection and screen drawing are owned by `render.asm`. `Pac_FacingDir` preserves visual direction independently from a stopped `Pac_Dir`.
-
-### Acceptance
-
-- [x] `player.asm` contains no raw screen writes
-- [x] renderer consumes player state through prepared descriptor variables
-- [x] facing state remains logically independent from movement stop state
-- [ ] V3 directional animation/stopping behavior verified
-- [ ] V2 build passes
-
----
-
-## P48-014 - Cycle-budget profiling and memory budget checks
-
-- **Status:** `VERIFY`
-- **Priority:** `P2`
-- **Type:** performance engineering
-- **Files:** `tools/check_project.py`, `tools/build.sh`, `docs/TESTING.md`
-- **Depends on:** `P48-008`, meaningful timing on `P48-012`
-
-### Implemented
-
-- binary safe ceiling is checked automatically at 28,672 bytes from `ORG 32768`, reserving 4 KiB of upper-RAM headroom;
-- ADR target remains common-case `Render_Commit` around/below 12,000 T-states, warning near 14,000;
-- V4 protocol defines required timing evidence.
-
-### Acceptance
-
-- [x] binary/headroom checked deterministically
-- [ ] V4 commit timing measured in cycle-aware environment
-- [ ] maximum tested actors/dirty cells recorded
-- [ ] evidence-based decision confirms 50 Hz or chooses fixed 25 Hz
-
----
-
-## P48-015 - Persistent incident memory and changelog discipline
+## P48-011 — Generate masked pre-shifted 8x8 actor assets
 
 - **Status:** `DONE`
 - **Priority:** `P1`
-- **Type:** engineering process / AI regression prevention
-- **Files:** `docs/INCIDENTS.md`, `CHANGELOG.md`, `docs/TESTING.md`, `AGENTS.md`, `docs/TODO.md`
+- **Files:** `tools/gen_shifted_sprites.py`, canonical sprite source, generated include
 
-### Implemented
+Verified: 20 canonical frames, 8 phases each = 160 generated phases; exact row/table structures; clean build regeneration; V2 assembly PASS.
 
-- append-oriented incident registry with stable `INC-YYYY-NNN` IDs;
-- incident lifecycle and severity model;
-- required root-cause, corrective-action, regression-guard and verification fields;
-- initial incidents record coordinate clobber, Sinclair mapping, and failed legacy renderer architecture;
-- changelog has permanent `Unreleased` workflow;
-- verification protocol defines what is required to close an incident;
-- agents are required to read incident history before modifying affected modules and update incident/changelog records when appropriate.
-
-### Acceptance
-
-- [x] incident records survive resolution and are never renumbered/deleted
-- [x] regression guards are mandatory for substantive incidents
-- [x] changelog updated continuously, not only at releases
-- [x] verification layers/closure rule documented
-- [x] TODO/ADR/incident/changelog/testing roles are explicitly separated
+Future opacity extensibility is separately tracked by P48-016.
 
 ---
 
-## P48-016 - Support explicit canonical opacity masks for future actor art
+## P48-012 — Replace runtime-shift drawing with masked renderer
+
+- **Status:** `VERIFY`
+- **Priority:** `P1`
+- **Files:** `src/render.asm`, `src/video.asm`, generated sprite data
+- **Incident:** `INC-2026-003`
+
+Implemented: masked two-byte composition, pre-selected phase, 192-line LUT, no runtime source shifting.
+
+- [x] V1 reference model PASS
+- [x] V2 runtime/TAP-load PASS
+- [x] V4 timing PASS
+- [ ] V3 visually verify all x/y phases and background preservation
+
+---
+
+## P48-013 — Move player drawing out of player module
+
+- **Status:** `VERIFY`
+- **Priority:** `P1`
+- **Files:** `src/player.asm`, `src/render.asm`, `src/main.asm`
+
+Implemented simulation-only player ownership and persistent `Pac_FacingDir`.
+
+- [x] V1/V2 PASS
+- [ ] V3 verify directional animation/stopping behavior
+
+---
+
+## P48-014 — Cycle-budget profiling and memory budget checks
+
+- **Status:** `DONE`
+- **Priority:** `P2`
+- **Files:** performance/build tools, `docs/TESTING.md`
+- **Incident:** `INC-2026-006`
+
+Baseline complete:
+
+- binary 8042 bytes;
+- headroom 20630 bytes beneath conservative ceiling;
+- common dirty1 4320 T-states;
+- cardinal dirty2 5455;
+- arbitrary dirty4 7800;
+- all below 12k common target / 14k warning threshold;
+- profiler executes exact raw assembled bytes and verifies measurement opcode.
+
+Re-run V4 when enemies materially increase actor/dirty counts.
+
+---
+
+## P48-015 — Persistent incident memory and changelog discipline
+
+- **Status:** `DONE`
+- **Priority:** `P1`
+
+Append-oriented incidents, changelog, ADRs, verification protocol, and executable regression guards are established and mandatory for AI agents.
+
+---
+
+## P48-016 — Support explicit canonical opacity masks for future actor art
 
 - **Status:** `READY`
 - **Priority:** `P2`
-- **Type:** sprite asset extensibility
-- **Files:** `src/sprites.asm` or new canonical asset source, `tools/gen_shifted_sprites.py`, `tools/check_project.py`, `src/render.asm` only if generated layout changes
-- **Depends on:** none for design; must be complete before using art that needs opaque zero-valued pixels
+- **Files:** canonical sprite source, generator/checker, renderer only if layout changes
 
-### Problem
+Current masks infer transparency from zero image bits. Before adding actors needing opaque zero-valued pixels, introduce explicit canonical opacity masks while preserving deterministic generated phases.
 
-The current generator treats every zero bit in a canonical sprite bitmap as transparent and derives the mask as the inverse of generated image occupancy. This is correct for current Pac frames.
+---
 
-Future actor art may need an opaque pixel whose displayed bitmap value is zero, or may require a silhouette mask different from the visible one-bit pattern. The current inferred-mask format cannot express that.
+## P48-017 — Publish the latest compiled and verified TAP from GitHub
 
-### Resolution
+- **Status:** `DONE`
+- **Priority:** `P1`
+- **Files:** `.github/workflows/verify.yml`, `tools/build.sh`, release docs
+- **Incidents:** `INC-2026-007`
 
-Before such art is introduced:
+Implemented and verified:
 
-1. define a compact human/AI-editable canonical mask representation paired with each frame;
-2. generate shifted image and shifted opacity mask independently;
-3. keep the renderer's `maskL,imageL,maskR,imageR` hot format if possible;
-4. extend structural checks so every canonical frame has a valid matching opacity mask;
-5. retain backwards compatibility or migrate all current Pac frames deterministically.
+- [x] qualifying `main` pushes run the pinned canonical build
+- [x] release is downstream of the same verified artifact, with no second compilation
+- [x] TAP load is simulated from a fresh 48K machine to `PC=$8000` before release
+- [x] per-commit releases retain history
+- [x] newest verified release is marked Latest
+- [x] stable asset `pac48-latest.tap`
+- [x] versioned TAP attached
+- [x] `SHA256SUMS.txt` and `BUILD-INFO.txt` attached
+- [x] release-package checksum validated before publication
+- [x] documentation-only pushes do not create redundant binary releases
 
-### Acceptance
+Stable download:
 
-- [ ] canonical art can express opaque zero-valued pixels
-- [ ] generator shifts image and opacity independently
-- [ ] structural checks reject missing/malformed masks
-- [ ] current Pac visuals remain equivalent
-- [ ] V2/V3 verification passes after migration
+```text
+https://github.com/Frapo78/pac48/releases/latest/download/pac48-latest.tap
+```
 
 ---
 
 ## Adding tasks
 
-Use the next unused ID and this minimum structure:
+Use the next unused ID and include at minimum:
 
 ```text
-## P48-XXX - Title
+## P48-XXX — Title
 - Status
 - Priority
-- Type
 - Files
 - Depends on
+- Related incident/ADR if applicable
 
-### Problem
-### Resolution / Implemented
-### Acceptance
-### Verification notes
+Problem / goal
+Implemented or resolution plan
+Acceptance / verification evidence
 ```
 
-Never encode important new work only in chat history or a commit message.
+Never leave important work only in chat or commit messages.
