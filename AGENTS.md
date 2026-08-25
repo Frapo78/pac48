@@ -1,50 +1,90 @@
 # AGENTS.md - PAC48
 
-Machine-oriented instructions for AI coding agents working on PAC48.
+Machine-oriented rules for AI coding agents working on PAC48.
 
-PAC48 is a Pac-Man-like game engine for the ZX Spectrum 48K, written entirely in Z80 assembly. The current engine already has menu/input abstraction, maze collision/rendering, buffered direction changes, pixel/sub-tile player movement, and directional 8x8 animation. Pellet consumption, scoring, enemies, lives, full game states, and sound are still incomplete.
+PAC48 targets the ZX Spectrum 48K in Z80 assembly. The current code is mid-migration from a full-maze-redraw/runtime-shift renderer to the performance architecture accepted in ADR 0001.
 
 ## Mandatory reading order
 
-Before making a code change, read:
+Before any code change read:
 
-1. `AGENTS.md` — hard rules and module ownership.
-2. `docs/ARCHITECTURE.md` — current implementation, coordinate spaces, and runtime pipeline.
-3. `docs/TODO.md` — canonical prioritized work queue and acceptance criteria.
+1. `AGENTS.md`
+2. `docs/ARCHITECTURE.md`
+3. `docs/adr/0001-rendering-architecture.md`
+4. `docs/TODO.md`
 
-Do not reconstruct priorities from old commits, README roadmap prose, or chat history when `docs/TODO.md` already contains the task.
+`docs/TODO.md` is the canonical work queue. Do not reconstruct priority from chat, old PRs or stale roadmap prose.
 
-## TODO discipline
+## Task discipline
 
-`docs/TODO.md` is the source of truth for planned technical work.
-
-For each task:
-
-- Use its stable `P48-###` ID in commits/PRs when practical.
-- Work highest priority first unless the user explicitly requests another task.
-- Do not mark a task `DONE` until its acceptance criteria and required verification are complete.
-- If code is implemented but emulator/hardware verification is still required, use `VERIFY`, not `DONE`.
-- Add newly discovered work as a new stable task instead of silently expanding scope.
-- Never renumber or reuse task IDs.
-- Update the task record when implementation changes the known state of the repository.
+- Use stable `P48-###` IDs.
+- Work the highest-priority unblocked task unless the user explicitly selects another.
+- Do not silently broaden a task.
+- Create a new task for newly discovered work.
+- Do not renumber/reuse IDs.
+- `DONE` requires implementation plus required verification.
+- If code exists but runtime/profiling verification is missing, use `VERIFY`.
 
 ## Hard target constraints
 
-- Target machine: ZX Spectrum 48K only.
+- Machine: ZX Spectrum 48K.
 - CPU: Zilog Z80.
-- Entry point: `ORG 32768` in `src/main.asm`.
-- Do not change the load/start address.
-- Do not use 128K memory banking or other 128K-only features.
-- Do not introduce external runtime libraries.
-- Avoid ROM calls in gameplay code. Existing menu code uses ROM print/CLS; do not add new gameplay ROM dependencies unless explicitly requested.
-- Screen bitmap begins at `SCREEN_ADDR=16384` (`$4000`).
-- Attribute memory begins at `ATTR_ADDR=22528` (`$5800`).
-- Current player movement is pixel/sub-tile based. Do not revert it to tile-at-a-time movement as a casual refactor.
-- Keep behavior compatible with real hardware, not only emulators.
+- Entry/load address: `ORG 32768` (`$8000`).
+- Do not change the load/start address without explicit approval and a new architecture decision.
+- No 128K paging or 128K-only runtime dependency.
+- No external Spectrum-side runtime libraries.
+- Keep code/game data in upper RAM (`$8000+`) by default.
+- Screen bitmap: `$4000-$57ff`.
+- Attributes: `$5800-$5aff`.
+- Avoid new ROM dependencies during gameplay. Existing menu ROM printing is legacy/tolerated.
+- Real 48K hardware compatibility matters more than emulator-specific tricks.
+
+## Accepted rendering architecture
+
+New rendering work must follow `docs/adr/0001-rendering-architecture.md`.
+
+The target is:
+
+- persistent tilemap-backed maze;
+- full maze drawn once per level, not per frame;
+- pixel/sub-tile actor movement retained;
+- 8x8 masked software sprites;
+- eight pre-shifted horizontal phases for one-pixel movement;
+- generated image/mask data in upper RAM;
+- 192-line screen-address lookup table;
+- dirty-cell background restoration;
+- dedicated `render.asm` module;
+- preparation separated from short time-critical screen commit;
+- approximately 50 Hz target until profiling proves a fixed 25 Hz design is preferable;
+- moving actors do not own/rewrite attributes in the baseline renderer.
+
+Legacy routines may remain during migration, but new features must not deepen dependence on:
+
+- `Maze_Draw` every frame;
+- runtime sprite-row shifting;
+- destructive opaque actor byte writes;
+- direct actor drawing from `player.asm`/future `enemy.asm`;
+- a full software framebuffer.
+
+## Optimization policy
+
+Do not jump directly to exotic Spectrum tricks.
+
+Baseline optimization order:
+
+1. correctness;
+2. module ownership;
+3. dirty restoration;
+4. pre-shifted masked sprites;
+5. screen-line lookup table;
+6. profile T-states and memory;
+7. optimize measured hot loops.
+
+Beam racing, floating-bus synchronization, stack-as-screen drawing, large self-modifying/generated runtime render code, or full-screen double buffering require explicit justification and a new ADR if proposed as core architecture.
 
 ## Build and verification
 
-Canonical build command:
+Canonical build:
 
 ```sh
 ./tools/build.sh
@@ -58,351 +98,131 @@ sjasmplus --raw=build/pac48.bin src/main.asm
 bin2tap.py -o 32768 -s 32768 -c 32767 build/pac48.bin build/pac48.tap
 ```
 
-Required tools:
+Every code change:
 
-- `sjasmplus`
-- `bin2tap.py` from SkoolKit
+1. must assemble/build;
+2. must record missing tooling instead of claiming success when it was not run;
+3. must run emulator/real-hardware checks when changing rendering, timing, controls, loader or gameplay;
+4. must update the matching TODO verification notes.
 
-For every code change:
+Rendering work must ultimately be checked in a cycle-aware environment. Estimates are allowed during development but must be labelled estimates.
 
-1. Assemble with `./tools/build.sh` at minimum.
-2. If tools are missing, report the exact missing command and do not claim the task fully verified.
-3. Rendering, input, loader, timing, and gameplay changes require an emulator or real-hardware smoke test when the task acceptance criteria call for it.
-4. Record verification evidence in the corresponding `docs/TODO.md` task.
-
-## Current file ownership
-
-Keep responsibilities isolated and modify the smallest correct module.
+## Module ownership
 
 ### `src/main.asm`
 
-Owns `ORG 32768`, include order, boot sequence, and frame orchestration.
-
-Do not put feature logic here unless it is orchestration/state transition logic.
+Entry, include order, startup, frame orchestration. No feature logic beyond orchestration/transitions.
 
 ### `src/config.asm`
 
-Owns global compile-time constants such as hardware ports, screen addresses, and colors.
-
-Do not put mutable game state here.
+Global compile-time hardware/constants.
 
 ### `src/memory.asm`
 
-Owns persistent runtime state.
-
-Current important state includes:
-
-- `FrameCounter`
-- `GameState`
-- `Pac_X`, `Pac_Y`
-- `Pac_PixelX`, `Pac_PixelY`
-- `Pac_Dir`
-- `Pac_ReqDir`
-- `Input_Mode`
-
-Add variables here only when state must persist across calls/frames. Do not silently reorder existing state if address stability could matter.
+Persistent mutable state. Do not casually reorder address-sensitive data.
 
 ### `src/menu.asm`
 
-Owns startup menu, control selection, and menu-facing text.
-
-The menu sets `Input_Mode` and resets player direction state.
+Startup/control-selection UI.
 
 ### `src/input.asm`
 
-Owns keyboard/joystick polling.
-
-Public routine:
-
-```text
-Input_Read
-A=0 none
-A=1 up
-A=2 down
-A=3 left
-A=4 right
-```
-
-Gameplay modules must not poll keyboard or joystick ports directly.
-
-Known active task: Sinclair 1/2 mapping is incorrect; see `P48-002`.
+All physical keyboard/joystick reads. Public gameplay interface returns logical input; gameplay modules do not read ports.
 
 ### `src/video.asm`
 
-Owns screen clearing, bitmap/attribute address calculations, frame hooks, tile drawing, cell-aligned sprites, and pixel-positioned sprites.
-
-Current relevant routines include:
-
-- `Video_Clear`
-- `Video_BeginFrame`
-- `Video_EndFrame`
-- `Video_DrawTile`
-- `Video_DrawSprite`
-- `Video_DrawSpritePx`
-- `Video_NextScanline`
-- `Video_DrawTileForPixel`
-
-Keep raw ZX bitmap addressing here.
-
-Do not assume registers are preserved unless the routine contract says so. Current maze rendering has a known `DE` preservation bug tracked as `P48-001`.
-
-### `src/sprites.asm`
-
-Owns sprite bitmap data and frame tables.
-
-Current player animation already has tables for right, left, up, and down. Sprite frames are currently 8x8 / 8 bytes each.
+Low-level Spectrum screen primitives and, after migration, screen-line address lookup data/routines. It should not own game rules.
 
 ### `src/maze.asm`
 
-Owns maze constants, cell types, map data, rendering, single-cell restoration, and collision/walkability.
-
-Current map:
-
-- `Maze_Width=28`
-- `Maze_Height=20`
-- `Maze_OffsetX=2`
-- `Maze_OffsetY=2`
-
-Current cell types:
-
-- `Maze_CellPellet=0`
-- `Maze_CellWall=1`
-- `Maze_CellEmpty=2`
-
-Pellet state changes must be owned through maze routines rather than unrelated direct writes.
+Maze cell constants/state, collision, lookup and background cell rendering/restoration.
 
 ### `src/player.asm`
 
-Owns player movement, requested-direction handling, alignment checks, collision requests, pixel/tile synchronization, restoration helpers, animation selection, and player drawing.
+Player simulation: pixel position, active/requested direction, movement and logical animation choice. Direct screen drawing is legacy and is scheduled for removal.
 
-Do not poll input directly here; consume `Pac_ReqDir` / `Pac_Dir` state set by orchestration.
+### `src/sprites.asm` / generated sprite include
 
-## Include and symbol rules
+Sprite data/tables only.
 
-`src/main.asm` is the only assembly entry file.
+### future `src/render.asm`
 
-Keep include order intentional:
+Frame composition, dirty lists, actor descriptors, phase selection, `Render_Prepare`, `Render_Commit`, masked actor drawing.
 
-1. `config.asm`
-2. `memory.asm`
-3. `menu.asm`
-4. `input.asm`
-5. `video.asm`
-6. `sprites.asm`
-7. `maze.asm`
-8. `player.asm`
+### future `src/enemy.asm`
 
-Rules:
+Enemy simulation only; submit render descriptors rather than drawing directly.
 
-- Do not duplicate routines between modules.
-- Do not create duplicate public labels with different meanings.
-- Use module-prefixed public names such as `Maze_`, `Player_`, `Video_`, `Input_`.
-- Local sjasmplus dot-labels are fine when scoped and readable.
-- Add a new module only when responsibility is substantial and clearly distinct.
+## Public routine contracts
 
-## Register interface rules
+Every public routine must comment:
 
-Every new or changed public routine must document:
+- input registers/variables;
+- output;
+- clobbered registers;
+- preserved registers when relied on;
+- coordinate space.
 
-- input registers/state
-- output registers/state
-- clobbered registers
-- preserved registers when relied on
-- coordinate space
+Never assume undocumented register preservation. `P48-001` exists because implicit `DE` ownership caused a real rendering bug.
 
-Important current interfaces:
+## Coordinate rules
 
-### `Input_Read`
+- Maze coordinates: cell index inside 28x20 maze.
+- Screen-cell coordinates: 32x24 cells.
+- Screen-pixel coordinates: 256x192.
+- Bitmap addresses: video/render concern only.
 
-Output: `A=direction`, enum `0..4` as documented above.
+Current player movement uses pixel coordinates and grid-aligned collision/turn decisions. Do not revert to tile-at-a-time movement as an incidental refactor.
 
-### `Maze_CanMove`
+## Input interface
 
-Input: `D=x`, `E=y` in maze coordinates.
+`Input_Read` direction enum remains:
 
-Output: `A=1` walkable, `A=0` blocked/outside map.
+- `0` none
+- `1` up
+- `2` down
+- `3` left
+- `4` right
 
-### `Video_DrawTile`
-
-Input: `D=x`, `E=y` in screen cell coordinates, `A=attribute`.
-
-Do not assume `DE` survives this call unless the implementation contract is explicitly changed and documented.
-
-### `Video_DrawSprite`
-
-Input: `D=x`, `E=y` in screen cell coordinates, `HL=sprite_ptr`, `A=attribute`.
-
-### `Video_DrawSpritePx`
-
-Input: `D=x`, `E=y` in screen pixel coordinates, `HL=sprite_ptr`, `A=attribute`.
-
-This is the current player drawing path.
-
-### `Maze_DrawAtOffset`
-
-Input: `D=x`, `E=y` in maze coordinates, `HL=sprite_ptr`, `A=attribute`.
-
-Applies maze cell offsets before calling video code.
-
-## Coordinate spaces
-
-Never mix these silently.
-
-### Maze coordinates
-
-Logical cells:
-
-```text
-x=0..Maze_Width-1
-y=0..Maze_Height-1
-```
-
-### Screen cell coordinates
-
-8x8 ZX cells:
-
-```text
-x=0..31
-y=0..23
-```
-
-### Screen pixel coordinates
-
-Used by `Pac_PixelX`, `Pac_PixelY`, and `Video_DrawSpritePx`.
-
-`Player_LoadTile` converts screen pixel coordinates back into maze coordinates by dividing by 8 and subtracting maze offsets.
-
-## Current gameplay pipeline
-
-Current `main.asm` behavior is conceptually:
-
-```asm
-HALT
-CALL Input_Read
-; if A != 0, store requested direction in Pac_ReqDir
-CALL Player_Update
-CALL Video_BeginFrame
-CALL Maze_Draw
-CALL Player_Draw
-CALL Video_EndFrame
-JP MainLoop
-```
-
-Important implications:
-
-- Input is frame-polled.
-- Releasing input does not stop movement immediately; the last active direction continues.
-- `Pac_ReqDir` buffers turns.
-- Requested turns are accepted only when the player is grid-aligned and the destination tile is walkable.
-- Player position moves one pixel per update.
-- The whole maze is currently redrawn every frame; this is known technical debt, not a desired permanent design. See `P48-003`.
-
-## Rendering rules
-
-- Gameplay sprites must not use ROM character output.
-- Use video-module drawing primitives.
-- Pixel movement crosses 8x8 bitmap/attribute boundaries, so ZX attribute color behavior must be considered explicitly.
-- Do not solve color clash by adding broad new rendering complexity before evaluating the uniform walkable-cell attribute strategy in `P48-004`.
-- Avoid full-screen or full-maze clears/redraws during steady gameplay once `P48-003` is implemented.
-
-## Input rules
-
-- Keep `Input_Mode` abstraction intact.
-- Keep `Input_Read` direction enum stable unless a deliberate API change is approved.
-- Fire/start/pause may extend input through clearly named routines or a documented bitfield.
-- Keyboard, Kempston, Sinclair 1, and Sinclair 2 paths must remain independently testable.
+Keep keyboard, Kempston, Sinclair 1 and Sinclair 2 coherent.
 
 ## Maze rules
 
-- Maintain exactly `Maze_Width * Maze_Height` map cells.
-- `Maze_CanMove` must block walls and out-of-map positions.
-- New cell types belong in maze ownership.
-- Pellet consumption should mutate maze state through maze-owned routines.
-- Tunnels/wrap behavior, if added, must be explicit in collision and coordinate conversion logic.
+- `Maze_Map` contains exactly `Maze_Width * Maze_Height` cells.
+- Maze state is the source of truth for persistent background.
+- Pellet/energizer changes must be maze-owned, not arbitrary screen edits.
+- `Maze_CanMove` owns wall/out-of-map decisions.
 
-## Player rules
+## Rendering invariants after migration
 
-- Preserve current pixel/sub-tile movement unless explicitly redesigning it.
-- Direction changes should remain buffered through `Pac_ReqDir` and accepted at valid grid alignment.
-- Maze collision stays in maze routines; do not duplicate map lookup in player code.
-- Persistent player timers/animation/gameplay state belong in `memory.asm`.
+- Actor drawing uses `(screen AND mask) OR image` semantics.
+- Horizontal phase is selected before the commit hot loop.
+- Normal actor commit does not shift source rows at runtime.
+- Normal actor commit does not change attributes.
+- Dirty restoration happens before new actors are drawn.
+- Actor clipping/wrap decisions happen outside the hot loop when possible.
+- Renderer must know/record maximum dirty cells and actor count used for timing verification.
 
-## Enemy rules
+## Forbidden without explicit approval/new ADR
 
-When enemies are added:
+- changing `ORG 32768`;
+- changing target away from 48K;
+- replacing assembler/build system wholesale;
+- rewriting the complete engine in one unverified step;
+- making full-frame maze redraw the intended architecture;
+- making a 6K/full-screen software back buffer the default renderer;
+- relying on floating-bus/beam-racing behavior for correctness;
+- putting gameplay rendering into ROM calls;
+- changing to 128K-only sound/video features.
 
-- Persistent enemy state belongs in `memory.asm`.
-- A substantial enemy system may justify `src/enemy.asm`.
-- Enemies must use maze collision routines rather than duplicating maze lookup.
-- Start with one deterministic enemy before multiple personalities.
-- Do not add complex pathfinding before the core gameplay loop is stable.
+## Completion report
 
-## Game state rules
+For each implementation task report:
 
-`GameState` exists but does not yet drive a complete state machine.
-
-When implementing states:
-
-- Define named constants instead of scattering magic numbers.
-- Centralize transitions or give them one clear owner.
-- Avoid letting menu, player, maze, and enemy modules mutate global state independently.
-
-## Memory and performance rules
-
-- Treat RAM and CPU time as constrained.
-- Prefer compact byte state and tables.
-- Avoid stack-heavy inner loops when simpler register usage is possible.
-- Avoid `IX`/`IY` unless their benefit justifies cost.
-- Do not add large buffers without a measured reason.
-- Do not add self-modifying code casually.
-- Keep interrupt behavior simple and deterministic.
-
-## Style rules
-
-- Keep source ASCII unless an existing file requires otherwise.
-- Comment interfaces, hardware assumptions, and non-obvious address math.
-- Do not narrate trivial instructions line by line.
-- Prefer named constants over repeated magic numbers.
-- Avoid unrelated formatting churn.
-
-## Forbidden changes without explicit user approval
-
-- Changing `ORG 32768`.
-- Replacing sjasmplus/build system.
-- Introducing C or another runtime language.
-- Adding 128K-only features.
-- Rewriting the whole engine.
-- Moving all state/data into one monolithic file.
-- Broad memory-layout refactors.
-- Reverting pixel movement to tile-at-a-time movement.
-- Adding emulator-specific runtime behavior.
-- Adding ROM calls to active gameplay.
-- Guessing the exact GPL version; see `P48-006`.
-
-## Agent execution workflow
-
-For each implementation task:
-
-1. Select/read the relevant `P48-###` task.
-2. Inspect all affected modules.
-3. Confirm coordinate/register interfaces.
-4. Make the smallest coherent change.
-5. Build with `./tools/build.sh`.
-6. Run task-specific emulator/hardware checks when required.
-7. Update `docs/TODO.md` status, acceptance checkboxes, and verification notes.
-8. Update `docs/ARCHITECTURE.md` if the actual architecture changed.
-9. Report changed files, build result, verification performed, and remaining limitations.
-
-If implementation reveals a separate problem, create a new TODO ID rather than hiding it inside the current task.
-
-## Current high-priority queue
-
-Do not duplicate the full backlog here. The canonical details are in `docs/TODO.md`.
-
-Current foundation order:
-
-1. `P48-001` — preserve maze coordinates across attribute drawing.
-2. `P48-002` — correct Sinclair joystick direction mapping.
-3. `P48-003` — remove full-maze redraw from every gameplay frame.
-4. `P48-004` — stabilize pixel movement across ZX attribute cells.
-5. `P48-009` — begin complete gameplay loop only after the foundation is stable.
+- task ID;
+- files changed;
+- key interface/behavior change;
+- build result;
+- emulator/hardware result when required;
+- timing/memory evidence when applicable;
+- TODO status after the work.
