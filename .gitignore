@@ -4,6 +4,9 @@ build/
 *.tap
 32768
 
+# generated assembly assets
+src/generated/
+
 # macOS
 .DS_Store
 
