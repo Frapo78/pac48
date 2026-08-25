@@ -45,21 +45,21 @@ Read before implementation:
 
 # Current verified baseline — 2026-08-25
 
-Owner V3 video confirms the gameplay renderer is intact, Pac movement is fluid and normal pellets disappear persistently. The remaining control complaint was input semantics/turn buffering rather than frame-rate performance.
+Owner V3 video confirms the gameplay renderer is intact, Pac movement is fluid and normal pellets disappear persistently. The remaining control complaint is input/turn semantics rather than frame-rate performance. The 0.3.6 owner recording also exposed a deterministic diagonal dead-end stall and an unreadable build stamp; both have been corrected in 0.3.7 and remain pending owner V3 confirmation.
 
 Current verified release:
 
-- semantic version: `0.3.6-beta`;
-- commit: `3cc091e0fa3fc3e65fef16382dec25768259e44b`;
-- build ID: `3CC091E`;
-- on-screen stamp: `V0.3.6 B3CC091E` rendered with the ZX Spectrum ROM 8x8 system font;
-- tag: `build-3cc091e0fa3f`;
-- CI run: `32806218254` — PASS;
-- TAP size: 8882 bytes;
-- TAP SHA-256: `8d340ddf14db9da5ac1b8c3d5786aacd242da2db1092e61e3e3cc6a7c0708ef8`;
-- preferred immutable/manual-test filename: `pac48-0.3.6-beta-b3CC091E.tap`;
+- semantic version: `0.3.7-beta`;
+- commit: `8077948ded9535cd1269a816ec304211504ed9fb`;
+- build ID: `8077948`;
+- intended on-screen stamp: `V0.3.7 B8077948` using printable ZX Spectrum ROM glyphs at `$3D00`;
+- tag: `build-8077948ded95`;
+- CI run: `32807389635` — PASS;
+- TAP size: 8986 bytes;
+- TAP SHA-256: `ed2bb9672db57f93f273957ffc40620ad2dec103a55f737958cee166d6990fbd`;
+- preferred immutable/manual-test filename: `pac48-0.3.7-beta-b8077948.tap`;
 - fresh 48K TAP load reaches `$8000`;
-- dedicated Z80 control-semantics harness: PASS;
+- dedicated Z80 control-semantics harness: PASS, including the exact diagonal dead-end regression from owner video;
 - `Render_Commit` remains 4341 / 5497 / 9184 T-states for dirty1 / dirty2 / dirty4.
 
 ---
@@ -148,6 +148,7 @@ Go beyond representative-cell assertions and make whole-field screen correctness
 - **Priority:** `P0`
 - **Type:** maze/gameplay correctness
 - **Files:** `src/maze.asm`, structural tests, `docs/TODO.md`
+- **Incident:** `INC-2026-011`
 - **Depends on:** none
 
 ### Proven problem
@@ -178,17 +179,18 @@ The current `Maze_Map` has 264 walkable cells, but only 246 are connected to the
 - **Status:** `VERIFY`
 - **Priority:** `P0`
 - **Type:** control feel / input semantics
-- **Files:** `src/input.asm`, `src/player.asm`, `tests/control_harness.asm`, `tools/run_control_tests.sh`
-- **Incident:** `INC-2026-012`
-- **Implemented in:** `3cc091e0fa3fc3e65fef16382dec25768259e44b`
+- **Files:** `src/input.asm`, `src/memory.asm`, `src/player.asm`, `tests/control_harness.asm`, `tools/run_control_tests.sh`
+- **Incidents:** `INC-2026-012`, `INC-2026-014`
+- **Current implementation:** `8077948ded9535cd1269a816ec304211504ed9fb`
 
 ### Implemented
 
-- physical directions are first collected as a simultaneous four-bit mask instead of being collapsed immediately by fixed priority;
-- while travelling horizontally, a vertical component is treated as the queued turn; while travelling vertically, a horizontal component is treated as the queued turn;
-- holding only the current travel direction returns `0`, so it cannot erase an already queued perpendicular turn;
-- holding a diagonal naturally alternates the desired perpendicular axis after each successful turn, matching arcade-style diagonal steering;
+- physical directions are collected as a simultaneous four-bit mask instead of being collapsed immediately by device-specific fixed priority;
+- the full physically-held state is retained in `Input_HeldMask` for the player update;
+- while travelling horizontally, a vertical component is the preferred queued turn; while travelling vertically, a horizontal component is preferred;
+- holding only the current travel direction explicitly returns that direction, replacing/cancelling any stale queued perpendicular turn;
 - 180-degree reversals are applied immediately inside the current corridor instead of waiting for the next 8-pixel node;
+- if the preferred perpendicular turn is blocked at a dead end and the current travel direction also cannot continue, a physically-held legal reversal is selected and moved in the same frame instead of leaving Pac stopped;
 - 90-degree turns remain grid/legal-opening constrained, preserving collision safety;
 - semantics are shared by Kempston, keyboard/cursors and Sinclair modes.
 
@@ -198,20 +200,22 @@ The dedicated Z80 control harness verifies:
 
 - right travel + down/right => DOWN request;
 - down travel + down/right => RIGHT request;
-- current-direction-only input does not erase a queued turn;
+- current-direction-only input replaces stale queued intent;
 - symmetric up/left case;
 - opposite cardinal input remains valid;
-- mid-cell 180-degree reversal changes direction immediately and moves one pixel safely.
+- mid-cell 180-degree reversal changes direction immediately and moves one pixel safely;
+- exact owner-video regression: at maze cell `(1,3)`, LEFT and DOWN blocked, RIGHT open, `DOWN+RIGHT` held while moving LEFT => Pac selects RIGHT and moves one pixel in the same update.
 
-CI run `32806218254`: PASS.
+CI run `32807389635`: PASS.
 
 ### Acceptance
 
 - [x] direction-aware diagonal semantics pass Z80 tests;
-- [x] current direction no longer overwrites queued turns;
+- [x] stale queued turn cancellation passes Z80 test;
 - [x] immediate reversal passes Z80 test;
+- [x] diagonal dead-end fallback passes exact topology regression;
 - [x] no diagonal physical movement is introduced;
-- [ ] V3: owner confirms first-opening turns feel immediate/predictable rather than sluggish/stuck.
+- [ ] V3: owner confirms corridors no longer end in artificial stalls and junction control feels immediate/predictable.
 
 ---
 
@@ -241,18 +245,20 @@ The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Ac
 - **Priority:** `P1`
 - **Type:** release identity / visual diagnostics
 - **Files:** `VERSION`, `tools/build.sh`, `tools/check_build_identity.py`, `src/generated/build_info.asm`, `src/hud.asm`, `src/main.asm`, `src/menu.asm`, release workflow
-- **Current implementation:** `3cc091e0fa3fc3e65fef16382dec25768259e44b`
+- **Incident:** `INC-2026-013`
+- **Current implementation:** `8077948ded9535cd1269a816ec304211504ed9fb`
 
 ### Implemented
 
-- version advanced to `0.3.6-beta`;
+- version advanced to `0.3.7-beta`;
 - `VERSION` remains the semantic-version source for generated menu title and TAP filenames;
 - the build derives a seven-character uppercase build ID from the exact Git commit; local dirty builds are marked with a leading `D`;
-- the rejected custom 3x5 minifont was removed;
-- `V<core-version> B<build-id>` is now drawn with the ZX Spectrum ROM/system 8x8 font at `$3C00`, centered in the free top character row;
-- current release displays `V0.3.6 B3CC091E`;
-- release assets include `pac48-0.3.6-beta.tap` and immutable/cache-safe `pac48-0.3.6-beta-b3CC091E.tap`;
-- build identity checks fail if the ROM font is replaced by the old mini-font or if centering/build metadata becomes inconsistent.
+- the rejected custom 3x5 minifont remains removed;
+- `V<core-version> B<build-id>` is drawn with the ZX Spectrum ROM/system 8x8 font, centered in the free top character row;
+- ROM glyph indexing is now correct: `HUD_GetRomGlyph` subtracts ASCII 32, therefore printable glyph data starts at `$3D00`; the prior `$3C00` base was 256 bytes early and produced unreadable ROM data;
+- current release is intended to display `V0.3.7 B8077948`;
+- release assets include `pac48-0.3.7-beta.tap` and immutable/cache-safe `pac48-0.3.7-beta-b8077948.tap`;
+- build identity checks reject `$3C00`, require `$3D00`, and reject reintroduction of the old mini-font.
 
 ### Acceptance
 
@@ -260,8 +266,8 @@ The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Ac
 - [x] CI proves build ID equals the release commit prefix;
 - [x] versioned and version+build TAP assets are published;
 - [x] build-specific TAP passes fresh-48K load verification;
-- [x] build guard requires ROM 8x8 system font rather than custom mini-font;
-- [ ] V3: owner confirms `V0.3.6 B3CC091E` is clearly readable in the gameplay screenshot.
+- [x] build guard requires correct printable ROM font base `$3D00`;
+- [ ] V3: owner confirms `V0.3.7 B8077948` is clearly readable in the gameplay screenshot.
 
 ---
 
