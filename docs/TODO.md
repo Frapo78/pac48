@@ -23,6 +23,7 @@ Read before implementation:
 - Code without required evidence is `VERIFY`, not `DONE`.
 - A green build is not a substitute for owner-visible V3 verification when player-visible graphics or control feel changes.
 - During manual regression diagnosis, prefer an immutable per-commit release URL and verify the SHA-256 so a cached TAP cannot be mistaken for the current build.
+- Every screenshot/manual video should include or preserve the on-screen `V<version> B<build-id>` stamp introduced by `P48-030`.
 
 ## Status
 
@@ -44,20 +45,24 @@ Read before implementation:
 
 # Current verified baseline — 2026-08-25
 
-Owner V3 video of the real `0.3.4-beta` gameplay build confirms:
+Owner V3 video of the real gameplay build confirms:
 
 - maze graphics are intact and readable;
 - Pac movement is fluid;
 - normal pellets disappear persistently as Pac traverses them;
 - the earlier report of a completely corrupted screen was caused by loading a stale/cached TAP, not by the collision/pellet integration (`INC-2026-010`).
 
-Current code/release after correcting the unnecessary rollback and adding Kempston FIRE menu start:
+Current verified release after version/build identity work:
 
-- commit: `b8959392da3ee4d37478082b26c53da80f237746`;
-- tag: `build-b8959392da3e`;
-- CI run: `32804161378` — PASS;
-- TAP size: 8592 bytes;
-- TAP SHA-256: `ede09a62b1398f9da70ada45e86eb5f69b16a9ec9667414068d7bb19ec44dac5`;
+- semantic version: `0.3.5-beta`;
+- commit: `91e4fcdb944972cb38476f1e1e21ff6d613df4c3`;
+- build ID: `91E4FCD`;
+- on-screen stamp: `V0.3.5 B91E4FCD`;
+- tag: `build-91e4fcdb9449`;
+- CI run: `32805223975` — PASS;
+- TAP size: 8903 bytes;
+- TAP SHA-256: `d792d7765591dcbf435faf2d718ec200c35dcd7fffe99c01305ce5743025c12b`;
+- preferred immutable/manual-test filename: `pac48-0.3.5-beta-b91E4FCD.tap`;
 - fresh 48K TAP load reaches `$8000`;
 - `Render_Commit` remains 4341 / 5497 / 9184 T-states for dirty1 / dirty2 / dirty4.
 
@@ -67,7 +72,7 @@ Current code/release after correcting the unnecessary rollback and adding Kempst
 
 Recommended order:
 
-`P48-029 V3 -> P48-027 -> P48-028 -> P48-026/P48-023 -> P48-019 -> P48-020/021/022 -> broader P48-009`
+`P48-029 V3 -> P48-030 V3 -> P48-027 -> P48-028 -> P48-026/P48-023 -> P48-019 -> P48-020/021/022 -> broader P48-009`
 
 ---
 
@@ -216,13 +221,41 @@ Around some corridor exits Pac feels "stuck". Example expectation: while moving 
 
 ### Implemented
 
-The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Active-high FIRE bit 4 selects `Input_Mode=1` and starts the game as Kempston.
+The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Active-high FIRE bit 4 selects `Input_Mode=1` and starts the game as Kempston. `tools/check_build_identity.py` now guards this behavior structurally.
 
 ### Acceptance
 
 - [x] canonical build/runtime/TAP verification passes;
 - [x] verified release published;
 - [ ] V3: owner confirms pressing Kempston FIRE at the menu starts the game in Kempston mode.
+
+---
+
+## P48-030 — Version/build stamp visible in every gameplay screenshot
+
+- **Status:** `VERIFY`
+- **Priority:** `P1`
+- **Type:** release identity / visual diagnostics
+- **Files:** `VERSION`, `tools/build.sh`, `tools/check_build_identity.py`, `src/generated/build_info.asm`, `src/hud.asm`, `src/main.asm`, `src/menu.asm`, release workflow
+- **Implemented in:** `91e4fcdb944972cb38476f1e1e21ff6d613df4c3`
+
+### Implemented
+
+- version advanced from `0.3.4-beta` to `0.3.5-beta`;
+- `VERSION` is now the semantic-version source for the generated menu title and TAP filenames;
+- the build derives a seven-character uppercase build ID from the exact Git commit; local dirty builds are marked with a leading `D`;
+- a 3x5 minifont draws `V<core-version> B<build-id>` centered in the free top band once at startup;
+- current release displays `V0.3.5 B91E4FCD`;
+- release assets include both `pac48-0.3.5-beta.tap` and immutable/cache-safe `pac48-0.3.5-beta-b91E4FCD.tap`;
+- structural identity checks fail on hardcoded menu versions, missing HUD stamp wiring, invalid build-id format, non-centered labels, or loss of the Kempston FIRE shortcut.
+
+### Acceptance
+
+- [x] canonical build passes with generated version/build metadata;
+- [x] CI proves build ID equals the release commit prefix;
+- [x] versioned and version+build TAP assets are published;
+- [x] build-specific TAP passes fresh-48K load verification;
+- [ ] V3: owner confirms the mini stamp is readable at the top centre and does not interfere with the maze.
 
 ---
 
@@ -272,7 +305,8 @@ Goal: replace the generic 28x20 topology with a deliberate symmetric arcade-styl
 - Owner must explicitly choose the exact GPL variant; agents must not guess.
 
 ## P48-007 — Make VERSION the single release-version source
-- **Status:** `READY` | **Priority:** `P2`
+- **Status:** `DONE` | **Priority:** `P2`
+- `tools/build.sh` generates menu/build strings and all versioned filenames from `VERSION`; `src/menu.asm` no longer hardcodes a semantic version. Guarded by `tools/check_build_identity.py`.
 
 ## P48-008 — Establish repeatable verification baseline
 - **Status:** `VERIFY` | **Priority:** `P2`
