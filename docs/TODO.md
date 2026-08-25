@@ -41,19 +41,23 @@ Read before implementation:
 
 ## Current verified baseline — 2026-08-25
 
-Canonical GitHub Actions currently proves:
+Canonical GitHub Actions run `32800960272` on commit `e0e4afce51442df193eb48de18226d53a42ab703` proves the current visual-recovery code baseline:
 
 - V1 structural/architecture checks PASS;
 - sjasmplus 1.23.1 assembly: 0 errors / 0 warnings;
-- headless 48K Z80 runtime harness PASS;
-- binary size 8042 bytes;
-- conservative upper-RAM headroom 20630 bytes;
-- TAP size 8122 bytes;
+- headless 48K Z80 runtime harness PASS, including maze attribute and wall-outline guards;
+- binary size 8279 bytes;
+- conservative upper-RAM headroom 20393 bytes;
+- TAP size 8359 bytes;
 - fresh-48K simulated tape loading reaches `PC=32768 ($8000)`;
-- V4 `Render_Commit` timing with 48K contention: dirty1 4320, dirty2 5455, dirty4 7800 T-states;
-- verified release publication produces `pac48-latest.tap`, versioned TAP, checksum and build metadata.
+- V4 `Render_Commit` timing with 48K contention:
+  - dirty1: 4341 T-states;
+  - dirty2: 5497 T-states;
+  - arbitrary dirty4: 9184 T-states;
+- all measured cases remain below the 12,000 T-state common target and 14,000 warning threshold;
+- verified release publication completes successfully.
 
-The owner-provided V3 screenshot exposed a serious visual regression that automated tests did not catch: the initial maze is rendered as colored horizontal bands/blocks and is not an acceptable game screen. Visual recovery is therefore the active milestone and takes precedence over new gameplay.
+The owner-provided V3 screenshot exposed the visual regression that initiated this milestone. The deterministic cause has now been fixed and guarded, but the corrected screen still needs a fresh owner-visible V3 screenshot before the recovery task can be declared `DONE`.
 
 ---
 
@@ -87,40 +91,46 @@ Do not add enemies, scoring logic, sound, or broad gameplay until P48-018 and P4
 
 ## P48-018 — Recover a clean, readable maze baseline
 
-- **Status:** `READY`
+- **Status:** `VERIFY`
 - **Priority:** `P0`
 - **Type:** rendering correctness + visual recovery
 - **Files:** `src/maze.asm`, `src/sprites.asm`, `tests/runtime_harness.asm`, `docs/INCIDENTS.md`
 - **Depends on:** none
-- **Related:** `INC-2026-001`, new incident for the owner-reported visual regression
+- **Incident:** `INC-2026-008`
 
 ### Problem
 
-The owner-provided V3 screenshot shows horizontal attribute-color bands and large solid blue/red areas instead of a readable maze. Static review identifies a concrete register-contract regression: `Maze_DrawAtOffset` receives the intended attribute in `A`, then overwrites `A` while adding screen offsets to `D/E`, so the screen Y coordinate reaches `Video_DrawSprite` as the attribute value.
+The owner-provided V3 screenshot showed horizontal attribute-color bands and large solid blue/red areas instead of a readable maze. Root cause: `Maze_DrawAtOffset` received the intended attribute in `A`, then overwrote `A` while translating maze coordinates to screen coordinates, so the screen Y coordinate was passed to `Video_DrawSprite` as the Spectrum attribute.
 
-Even after correcting that corruption, solid-blue PAPER wall cells are visually too coarse for the target reference.
+Solid-blue PAPER wall cells were also too coarse for the desired arcade-like visual language.
 
-### Resolution plan
+### Implemented
 
-1. preserve the caller attribute across maze-to-screen coordinate conversion;
-2. add a headless Z80 assertion that known wall/pellet cells receive the exact expected attributes;
-3. change walls to black PAPER + bright-blue INK;
-4. draw wall boundaries as thin bitmap edges selected from wall-neighbor topology instead of solid PAPER rectangles;
-5. reduce normal pellet art to a small regular dot;
-6. keep gameplay/collision data unchanged during this recovery step;
-7. run V1/V2/V4 and publish a new verified TAP; V3 screenshot remains required before `DONE`.
+1. the intended attribute survives maze-to-screen coordinate translation;
+2. the headless Z80 harness asserts exact attributes for representative wall and pellet cells through the real `Maze_Draw` path;
+3. walls use black PAPER + bright-blue INK;
+4. wall cells select one of 16 thin bitmap boundary variants from neighboring wall topology;
+5. normal pellet art is reduced to a 2x2 dot;
+6. gameplay/collision map data is unchanged;
+7. a failed first repair was caught by the new guard before release and is retained in `INC-2026-008`.
 
 ### Acceptance
 
-- [ ] no row/column coordinate is ever used as a Spectrum attribute by maze drawing;
-- [ ] headless harness catches a future attribute-contract regression;
-- [ ] wall cells use black PAPER and blue INK;
-- [ ] wall bitmap is boundary/outline based rather than a filled colored rectangle;
-- [ ] pellet bitmap is visibly smaller than the player;
-- [ ] collision map and player movement semantics unchanged;
-- [ ] V1/V2 PASS and fresh-48K TAP load reaches `$8000`;
-- [ ] V4 remains within budget;
+- [x] no row/column coordinate is used as a Spectrum attribute by current maze drawing;
+- [x] headless harness catches the attribute-contract regression;
+- [x] wall cells use black PAPER and blue INK;
+- [x] wall bitmap is boundary/outline based rather than a filled colored rectangle;
+- [x] pellet bitmap is visibly smaller than the player;
+- [x] collision map and player movement semantics unchanged;
+- [x] V1/V2 PASS and fresh-48K TAP load reaches `$8000`;
+- [x] V4 remains within budget: 4341 / 5497 / 9184 T-states;
 - [ ] V3 screenshot shows a black playfield with blue maze lines and no large red/blue attribute bands.
+
+### Verification evidence
+
+- failing guard run `32800881885` correctly blocked publication on an incorrect stack-order repair (code 13);
+- corrected run `32800960272` passed build, runtime harness, performance test, TAP load, artifact checks, and release publication;
+- current BIN 8279 bytes, TAP 8359 bytes, headroom 20393 bytes.
 
 ---
 
@@ -130,7 +140,7 @@ Even after correcting that corruption, solid-blue PAPER wall cells are visually 
 - **Priority:** `P1`
 - **Type:** level/visual design
 - **Files:** `src/maze.asm`, tests/checker, documentation
-- **Depends on:** `P48-018`
+- **Depends on:** `P48-018` visual baseline acceptance
 
 ### Goal
 
@@ -244,7 +254,7 @@ Prevent another build from being considered healthy while the actual game screen
 
 ### Acceptance
 
-- [ ] CI validates representative wall/pellet attributes and bitmap bytes;
+- [x] CI validates representative wall/pellet attributes and wall bitmap bytes;
 - [ ] `docs/TESTING.md` has an explicit initial-screen visual gate;
 - [ ] accepted V3 screenshot evidence is recorded with commit/ref;
 - [ ] a visibly banded/filled/corrupted maze cannot be marked release-quality solely because assembly passes.
@@ -286,7 +296,7 @@ Prevent another build from being considered healthy while the actual game screen
 
 ## P48-009 — Implement first complete gameplay loop
 - **Status:** `BLOCKED` | **Priority:** `P2`
-- Blocked by renderer/visual recovery. Later children: pellet consumption, score, level completion, lives, enemies, collisions, game over, energizers, sound.
+- Blocked by visual recovery. Later children: pellet consumption, score, level completion, lives, enemies, collisions, game over, energizers, sound.
 
 ## P48-010 — Dedicated render module and prepare/commit phases
 - **Status:** `VERIFY` | **Priority:** `P1`
@@ -305,7 +315,7 @@ Prevent another build from being considered healthy while the actual game screen
 
 ## P48-014 — Cycle-budget profiling and memory budget checks
 - **Status:** `DONE` | **Priority:** `P2` | **Incident:** `INC-2026-006`
-- Baseline: 8042-byte BIN, 20630-byte headroom, 4320/5455/7800 T-states.
+- Current visual-recovery baseline: 8279-byte BIN, 20393-byte headroom, 4341/5497/9184 T-states. Re-run when actor count or restore complexity changes materially.
 
 ## P48-015 — Persistent incident memory and changelog discipline
 - **Status:** `DONE` | **Priority:** `P1`
