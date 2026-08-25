@@ -27,6 +27,20 @@ Maze_Height     EQU 20
 Maze_OffsetX    EQU 2
 Maze_OffsetY    EQU 2
 
+; Functional centre tunnel. The maze stays 28 cells wide and the actor wraps
+; between the two edge cells on this row.
+Maze_TunnelRow         EQU 9
+Maze_TunnelLeftX       EQU 0
+Maze_TunnelRightX      EQU Maze_Width - 1
+Maze_TunnelPixelY      EQU (Maze_OffsetY + Maze_TunnelRow) * 8
+Maze_TunnelLeftPixelX  EQU (Maze_OffsetX + Maze_TunnelLeftX) * 8
+Maze_TunnelRightPixelX EQU (Maze_OffsetX + Maze_TunnelRightX) * 8
+
+; Arcade-style cornering window around a logical 8-pixel node. A perpendicular
+; request can snap to the nearest legal node when it is at most three pixels
+; before/after it, avoiding the old exact-%8 turn gate.
+Pac_TurnWindow EQU 3
+
 ; Player starts below the central maze structure, echoing the arcade spawn
 ; rather than the old prototype start in the upper-left corridor.
 Pac_StartX      EQU 13
