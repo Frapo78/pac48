@@ -24,6 +24,7 @@ Use concise entries grouped under `Added`, `Changed`, `Fixed`, `Verification`, a
 - 192-entry bitmap scanline address lookup table initialized at startup.
 - Build-time `tools/gen_shifted_sprites.py` generator producing eight horizontal phases and masks for every player animation frame.
 - `tools/check_project.py` deterministic checks for maze dimensions/content, generated sprite structure/pointer tables, and upper-RAM binary budget.
+- GitHub Actions verification workflow using pinned sjasmplus 1.23.1 and SkoolKit 10.1 to run the canonical build on pushes and pull requests.
 - Persistent engineering incident registry at `docs/INCIDENTS.md`.
 - Repeatable verification protocol at `docs/TESTING.md`, covering static checks, build, emulator controls/rendering, cycle timing, hardware tests, and incident-closure rules.
 - Rendering architecture ADR at `docs/adr/0001-rendering-architecture.md`.
@@ -56,7 +57,7 @@ Use concise entries grouped under `Added`, `Changed`, `Fixed`, `Verification`, a
 - Static validation confirms the maze remains exactly 20 x 28 = 560 cells.
 - The 192-line Spectrum bitmap-address formula was checked across all Y values against the standard address equation.
 - Dirty-cell modelling for current cardinal 8x8 player movement stays bounded (at most two cells in the current movement model; the renderer remains provisioned for future multi-actor cases).
-- Full canonical assembly/TAP build could not be executed in the current assistant execution environment because `sjasmplus` and `bin2tap.py` are not installed; related tasks remain `VERIFY`.
+- A repository-hosted V1/V2 CI path now exists so build verification does not depend on an individual agent environment having the Z80 toolchain preinstalled.
 - Emulator/hardware smoke testing and cycle-aware renderer profiling remain required before the related incidents can be closed.
 
 ### Known limitations
