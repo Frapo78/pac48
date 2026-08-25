@@ -89,7 +89,7 @@ Dedicated renderer, prepare/commit split, masked pre-shifted sprites, line LUT, 
 Canonical build rejects full-maze redraw in `MainLoop`, legacy runtime-shift drawing, simulation-owned screen writes, obsolete actor tables, invalid generated assets, and excessive binary/timing budgets.
 
 ### Verification evidence
-V1/V2/V4 pass: 4320/5455/7800 T-states for representative dirty cases; TAP reaches `$8000`. V3 visual rendering/turning remains required.
+V1/V2/V4 pass. Current post-visual-recovery measurements are 4341 / 5497 / 9184 T-states for representative dirty cases; TAP reaches `$8000`. V3 visual rendering/turning remains required.
 
 ---
 
@@ -139,7 +139,7 @@ Raw -> snapshot -> reload altered the exact instruction byte at the measurement 
 Profile raw assembled bytes directly; inject state deterministically; validate expected opcode at measurement start before accepting timing evidence.
 
 ### Verification evidence
-Canonical V4 reports 4320 / 5455 / 7800 T-states under 48K contention.
+Canonical V4 currently reports 4341 / 5497 / 9184 T-states under 48K contention after visual-recovery wall restoration changes; all remain within budget.
 
 ---
 
@@ -166,7 +166,7 @@ Later runs publish `pac48-latest.tap` successfully after canonical verification 
 - **Status:** `FIXED_PENDING_VERIFY`
 - **Severity:** `S0`
 - **Detected:** 2026-08-25
-- **Affected:** `src/maze.asm`, `tests/runtime_harness.asm`, maze presentation
+- **Affected:** `src/maze.asm`, `src/sprites.asm`, `tests/runtime_harness.asm`, maze presentation
 - **Related TODO:** `P48-018`, `P48-023`
 
 ### Symptom
@@ -175,17 +175,17 @@ The owner-provided V3 screenshot showed an unreadable game screen: rows of diffe
 ### Root cause
 `Maze_DrawAtOffset` accepted the intended Spectrum attribute in `A`, then reused `A` to add `Maze_OffsetX/Y` to `D/E`. The final screen Y value therefore reached `Video_DrawSprite` as the attribute. This escaped earlier CI because the runtime harness verified `Video_DrawTile` directly but did not assert attributes produced through the full maze drawing path.
 
-During the first attempted repair, `AF` and `DE` were pushed in the wrong stack order (`PUSH AF`, `PUSH DE`, then `POP AF`). The new runtime guard immediately failed with code 13, proving the test was capable of catching the same class of error before release.
+During the first attempted repair, `AF` and `DE` were pushed in the wrong stack order (`PUSH AF`, `PUSH DE`, then `POP AF`). The new runtime guard immediately failed with code 13, proving the test could catch the same class of error before release.
 
 ### Corrective action
 - preserve `DE`, then push the intended attribute `AF`, translate coordinates, pop `AF`, and call `Video_DrawSprite`;
-- document that the input attribute must survive coordinate translation even though AF may be clobbered by the lower-level callee;
+- document that the input attribute survives coordinate translation even though AF may be clobbered by the lower-level callee;
 - add runtime checks for known wall/pellet attributes through the real `Maze_Draw` path;
-- replace solid blue PAPER wall cells with black PAPER + bright-blue bitmap boundary tiles;
+- replace solid blue PAPER wall cells with black PAPER + bright-blue topology-selected bitmap boundary tiles;
 - shrink normal pellet art to a 2x2 dot.
 
 ### Regression guard
-The headless Z80 harness must fail if:
+The headless Z80 harness fails if:
 - maze wall `(0,0)` does not produce `Maze_AttrWall` at screen cell `(2,2)`;
 - maze pellet `(1,1)` does not produce `Maze_AttrPellet` at screen cell `(3,3)`;
 - the top-left wall bitmap does not contain the expected thin top/left boundary bytes.
@@ -193,7 +193,16 @@ The headless Z80 harness must fail if:
 Visual V3 remains mandatory because deterministic cell assertions cannot judge overall maze composition.
 
 ### Verification evidence
-Initial guard run `32800881885` correctly failed with code 13 on the incorrect stack-order repair and prevented release publication. Final V1/V2/V4 evidence must be appended after the corrected build completes; V3 owner-visible screenshot remains required before `CLOSED`.
+- run `32800881885` correctly failed with code 13 on the incorrect stack-order repair and prevented release publication;
+- corrected commit `e0e4afce51442df193eb48de18226d53a42ab703` passed GitHub Actions run `32800960272` completely;
+- sjasmplus: 0 errors / 0 warnings;
+- headless Z80 harness: PASS including the new maze attribute and wall-outline assertions;
+- V4 `Render_Commit`: dirty1 4341, dirty2 5497, dirty4 9184 T-states, all within budget;
+- binary 8279 bytes with 20393 bytes conservative headroom;
+- TAP 8359 bytes and fresh-48K tape simulation reaches `PC=$8000`;
+- verified release publication job: PASS.
+
+The incident stays `FIXED_PENDING_VERIFY` until a fresh V3 screenshot confirms that the visible color-band/fill corruption is gone on the actual game screen.
 
 ---
 
