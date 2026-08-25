@@ -23,23 +23,33 @@ Required for every change.
 
 V0 alone is never enough to close a runtime/render/input incident.
 
-### V1 - Deterministic project checks
+### V1 - Deterministic project and architecture checks
 
 Run through the canonical build or directly when diagnosing tooling:
 
 ```sh
+mkdir -p src/generated
 python3 tools/gen_shifted_sprites.py src/sprites.asm src/generated/pac_shifted.asm
 python3 tools/check_project.py \
   --maze src/maze.asm \
-  --generated-sprites src/generated/pac_shifted.asm
+  --generated-sprites src/generated/pac_shifted.asm \
+  --source-root src
 ```
 
 Expected invariants include:
 
-- maze has exactly 560 cells;
-- generated player data has exactly 160 shifted phases;
-- all four generated direction pointer tables exist;
-- generator internal phase/mask invariants pass.
+- maze is exactly 20 rows x 28 cells = 560 cells;
+- generated player data has exactly 160 unique shifted phases;
+- every generated phase is 8 scanlines x `maskL,imageL,maskR,imageR`;
+- every direction table contains exactly the expected 40 frame/phase pointers;
+- generator internal phase/mask invariants pass;
+- `Maze_Draw` is not called from `MainLoop`;
+- legacy `Video_DrawSpritePx` is absent;
+- `player.asm` has no direct video/render ownership;
+- obsolete hand-written `Pac_FrameTable*` tables are absent;
+- dirty maze restoration has not reintroduced the redundant attribute-only pass.
+
+These architecture guards encode regression lessons from `INC-2026-001` and `INC-2026-003` so they are enforceable, not only documented.
 
 ### V2 - Canonical assembly/TAP build
 
@@ -59,7 +69,7 @@ A successful build must produce:
 - `build/pac48.tap`
 - `build/pac48-<VERSION>.tap`
 
-The build also enforces the current upper-RAM binary budget.
+The build also enforces the current upper-RAM binary budget and reruns V1 before/after assembly.
 
 If a required command is missing, record the exact command as missing and leave relevant tasks/incidents at `VERIFY`.
 
@@ -131,7 +141,7 @@ Confirm:
 - spill byte does not erase neighboring maze pixels;
 - player stays visible over both pellet and empty corridor cells.
 
-#### Turning
+#### Turning and stopping
 
 Test turns in each orientation:
 
@@ -139,6 +149,8 @@ Test turns in each orientation:
 - horizontal -> down
 - vertical -> left
 - vertical -> right
+
+Also drive the player into a wall and confirm its visual facing remains the last valid direction rather than snapping to right.
 
 Confirm no one-frame corruption is left at the old/new dirty-cell intersection.
 
@@ -182,11 +194,11 @@ An incident may move to `CLOSED` only when:
 
 1. corrective code exists;
 2. required verification layers have passed;
-3. regression guard is documented;
+3. regression guard is documented and, where practical, executable in V1;
 4. TODO verification notes are updated;
 5. `CHANGELOG.md` reflects the fix.
 
-Example:
+Examples:
 
 - register-clobber rendering bug: V2 + V3 required;
 - Sinclair mapping bug: V2 + relevant V3 control tests required;
@@ -200,7 +212,7 @@ Commit/ref:
 Environment:
 
 V0 static: PASS/FAIL/NOT RUN
-V1 structural: PASS/FAIL/NOT RUN
+V1 structural/architecture: PASS/FAIL/NOT RUN
 V2 build: PASS/FAIL/NOT RUN
 V3 emulator: PASS/FAIL/NOT RUN
 V4 timing: PASS/FAIL/NOT RUN
