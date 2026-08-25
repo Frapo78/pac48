@@ -1,0 +1,71 @@
+name: PAC48 Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pac48-verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and structural verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout PAC48
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install SkoolKit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install 'skoolkit==10.1'
+          command -v bin2tap.py
+
+      - name: Build pinned sjasmplus 1.23.1
+        run: |
+          git clone --recursive --branch v1.23.1 --depth 1 https://github.com/z00m128/sjasmplus.git /tmp/sjasmplus
+          make -C /tmp/sjasmplus -j2 USE_LUA=0
+          sudo make -C /tmp/sjasmplus USE_LUA=0 install
+          command -v sjasmplus
+          sjasmplus --version
+
+      - name: Run canonical PAC48 build
+        run: |
+          chmod +x tools/build.sh
+          ./tools/build.sh
+
+      - name: Verify expected outputs
+        run: |
+          test -s build/pac48.bin
+          test -s build/pac48.tap
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          test -s "build/pac48-${VERSION}.tap"
+          test -s src/generated/pac_shifted.asm
+          ls -lh build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap" src/generated/pac_shifted.asm
+
+      - name: Upload verified build artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pac48-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/pac48.bin
+            build/pac48.tap
+            build/pac48-*.tap
+            src/generated/pac_shifted.asm
