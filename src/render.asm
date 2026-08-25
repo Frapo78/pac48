@@ -44,7 +44,7 @@ Render_Prepare:
     CALL Render_CollectPlayerDirty
     RET
 
-; Select generated sprite pointer from direction, animation frame, and x phase.
+; Select generated sprite pointer from facing direction, animation frame, x phase.
 Render_SelectPlayerSprite:
     CALL Render_SelectDirectionTable       ; DE = table base
     PUSH DE
@@ -81,7 +81,7 @@ Render_SelectPlayerSprite:
 
 ; Out: DE = base of 5-frame x 8-phase pointer table.
 Render_SelectDirectionTable:
-    LD A, (Pac_Dir)
+    LD A, (Pac_FacingDir)
     CP 1
     JR Z, .up
     CP 2
