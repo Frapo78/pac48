@@ -16,7 +16,6 @@
         INCLUDE "sprites.asm"
         INCLUDE "generated/pac_shifted.asm"
         INCLUDE "maze.asm"
-        INCLUDE "pellets.asm"
         INCLUDE "player.asm"
         INCLUDE "render.asm"
 
@@ -30,10 +29,6 @@ START:
         CALL Menu_Run
         CALL Video_Clear
         CALL Video_InitLineTable
-
-        ; The spawn tile is considered occupied by Pac at level start, so its
-        ; normal pellet is consumed before the initial maze is drawn.
-        CALL Player_ConsumeCurrentPellet
         CALL Maze_Draw
         CALL Render_Init
         CALL Render_Prepare
