@@ -8,8 +8,9 @@ Read in this order before implementation:
 2. `docs/ARCHITECTURE.md`
 3. `docs/adr/0001-rendering-architecture.md`
 4. `docs/INCIDENTS.md`
-5. `CHANGELOG.md`
-6. this file
+5. `docs/TESTING.md`
+6. `CHANGELOG.md`
+7. this file
 
 ## Agent workflow
 
@@ -20,6 +21,7 @@ Read in this order before implementation:
 - Never renumber or reuse IDs.
 - If new work is discovered, create a new task rather than silently expanding scope.
 - Run `./tools/build.sh` for every code change.
+- Use `docs/TESTING.md` to report exactly which verification layers ran.
 - Rendering, timing, input, loader and gameplay changes require emulator/real-hardware verification when their acceptance criteria say so.
 - Code written but not fully verified is `VERIFY`, not `DONE`.
 - Update `CHANGELOG.md` for meaningful changes.
@@ -49,7 +51,7 @@ Recommended order:
 
 `P48-001/P48-002 -> P48-010/P48-011/P48-012/P48-013 -> P48-003/P48-004 -> P48-008/P48-014 -> P48-009`
 
-`P48-006` and `P48-007` remain independent.
+`P48-006` and `P48-007` remain independent. Complete `P48-016` before introducing actor art that needs explicit opaque-zero pixels.
 
 ---
 
@@ -73,8 +75,8 @@ Recommended order:
 - [x] attribute and bitmap paths use a documented coordinate contract
 - [x] `Maze_DrawCell` is protected from the original clobber pattern
 - [x] register contracts documented
-- [ ] `./tools/build.sh` passes
-- [ ] maze/pellet rendering visually verified
+- [ ] V2 canonical build passes
+- [ ] V3 maze/pellet rendering visually verified
 
 ### Verification notes
 
@@ -102,8 +104,8 @@ Code implemented 2026-08-25. Build/runtime verification still required.
 - [x] source bit-to-direction mapping corrected
 - [x] Q/A/O/P path unchanged
 - [x] Kempston path unchanged
-- [ ] build passes
-- [ ] both Sinclair modes manually smoke-tested
+- [ ] V2 build passes
+- [ ] V3 both Sinclair modes manually smoke-tested
 
 ### Verification notes
 
@@ -126,16 +128,18 @@ Code implemented 2026-08-25. Manual device/emulator verification still required.
 - `Render_Commit` restores previous dirty maze cells via `Maze_DrawCell`.
 - `Render_Prepare` builds a bounded, de-duplicated dirty-cell list for the prepared 8x8 player sprite.
 - normal frame path no longer calls `Maze_Draw`.
+- maze restoration uses one bitmap+attribute operation per dirty cell; the earlier redundant attribute write was removed.
 
 ### Acceptance
 
 - [x] `Maze_Draw` absent from normal per-frame gameplay path
 - [x] dirty list bounded and de-duplicated in code
-- [ ] player leaves no trails in emulator/hardware
-- [ ] dirty cells restore current pellet/empty state visually
-- [ ] horizontal/vertical/turning movement visually correct
-- [ ] build passes
-- [ ] common/worst dirty count and timing recorded
+- [x] no duplicate attribute write in normal `Maze_DrawCell` restoration path
+- [ ] V3 player leaves no trails
+- [ ] V3 dirty cells restore current pellet/empty state visually
+- [ ] V3 horizontal/vertical/turning movement visually correct
+- [ ] V2 build passes
+- [ ] V4 common/worst dirty count and timing recorded
 
 ### Verification notes
 
@@ -163,9 +167,9 @@ Implementation complete; runtime/timing verification pending.
 - [x] actor renderer performs no attribute writes
 - [x] walkable cells use a player-visible attribute baseline
 - [x] wall attributes remain maze-owned
-- [ ] actor visible at every sub-cell X/Y phase in runtime test
-- [ ] no permanent attribute trails
-- [ ] build and visual tests pass
+- [ ] V3 actor visible at every sub-cell X/Y phase
+- [ ] V3 no permanent attribute trails
+- [ ] V2/V3 build and visual tests pass
 
 ### Verification notes
 
@@ -226,22 +230,24 @@ After explicit owner choice (for example `GPL-3.0-only` or `GPL-3.0-or-later`), 
 - **Status:** `VERIFY`
 - **Priority:** `P2`
 - **Type:** testing/tooling
-- **Files:** `tools/check_project.py`, `tools/build.sh`, docs
+- **Files:** `tools/check_project.py`, `tools/build.sh`, `docs/TESTING.md`
 
 ### Implemented
 
+- `docs/TESTING.md` defines V0 static, V1 structural, V2 build, V3 emulator, V4 cycle-aware timing, and V5 hardware layers;
 - build always runs sprite generation before assembly;
-- deterministic check enforces exactly 560 maze cells;
-- deterministic check enforces 160 generated player sprite phases and all four pointer tables;
+- checker enforces exactly 20 maze rows x 28 cells and valid cell values;
+- checker enforces 160 unique generated phases, exactly 8 scanlines x 4 bytes per phase, and exact 40-pointer tables for each direction;
 - post-assembly check enforces a 28,672-byte binary ceiling, reserving upper-RAM stack/headroom.
 
 ### Acceptance
 
-- [x] structural regression checks exist
+- [x] deterministic structural regression checks exist
 - [x] generated sprite assets validated structurally
 - [x] binary/headroom guard exists
-- [ ] documented emulator smoke-test checklist completed at least once
-- [ ] exact build result recorded after current migration
+- [x] emulator/hardware/timing checklist documented
+- [ ] V2 exact current build result recorded
+- [ ] V3 protocol completed at least once on current renderer
 
 ---
 
@@ -291,8 +297,8 @@ After renderer/input foundation is verified, create child tasks for:
 - [x] prepare/commit public interfaces documented
 - [x] renderer does not read input ports
 - [x] screen writes isolated to render/video/maze restoration paths
-- [ ] build passes
-- [ ] runtime smoke test passes
+- [ ] V2 build passes
+- [ ] V3 runtime smoke test passes
 
 ---
 
@@ -311,16 +317,17 @@ After renderer/input foundation is verified, create child tasks for:
 - each generated row stores `maskL,imageL,maskR,imageR`;
 - internal generator assertions validate phase 0 and mask/image invariants;
 - build creates the generated include before assembly;
-- generated directory is ignored by Git.
+- generated directory is ignored by Git;
+- obsolete handwritten mobile-actor `Pac_FrameTable*` tables were removed so generated tables are authoritative.
 
 ### Acceptance
 
 - [x] eight phases generated for every required frame
 - [x] phase-0 invariant encoded in generator self-check
-- [x] masks are generated as inverse opaque occupancy
+- [x] masks are generated as inverse opaque occupancy for current Pac art
 - [x] clean build path generates the include before assembly
-- [x] structural checker validates generated phase count/tables
-- [ ] actual build succeeds with `sjasmplus`
+- [x] structural checker validates phase row layout and exact pointer tables
+- [ ] V2 actual build succeeds with `sjasmplus`
 
 ---
 
@@ -347,10 +354,10 @@ After renderer/input foundation is verified, create child tasks for:
 - [x] normal actor hot path has no runtime bit shifting
 - [x] masked compositing implemented
 - [x] screen-line LUT used
-- [ ] actor verified at every x phase without maze damage
-- [ ] pellets/background visually preserved outside actor silhouette
-- [ ] build passes
-- [ ] cycle-aware timing recorded for 1 actor and planned maximum actor count
+- [ ] V3 actor verified at every x phase without maze damage
+- [ ] V3 pellets/background visually preserved outside actor silhouette
+- [ ] V2 build passes
+- [ ] V4 timing recorded for 1 actor and planned maximum actor count
 
 ---
 
@@ -364,14 +371,15 @@ After renderer/input foundation is verified, create child tasks for:
 
 ### Implemented
 
-`src/player.asm` now contains movement/collision-coordinate simulation only. Player sprite selection and screen drawing are owned by `render.asm`.
+`src/player.asm` now contains movement/collision-coordinate simulation only. Player sprite selection and screen drawing are owned by `render.asm`. `Pac_FacingDir` preserves visual direction independently from a stopped `Pac_Dir`.
 
 ### Acceptance
 
 - [x] `player.asm` contains no raw screen writes
 - [x] renderer consumes player state through prepared descriptor variables
-- [ ] directional animation behavior verified at runtime
-- [ ] build passes
+- [x] facing state remains logically independent from movement stop state
+- [ ] V3 directional animation/stopping behavior verified
+- [ ] V2 build passes
 
 ---
 
@@ -380,18 +388,19 @@ After renderer/input foundation is verified, create child tasks for:
 - **Status:** `VERIFY`
 - **Priority:** `P2`
 - **Type:** performance engineering
-- **Files:** `tools/check_project.py`, `tools/build.sh`, docs
+- **Files:** `tools/check_project.py`, `tools/build.sh`, `docs/TESTING.md`
 - **Depends on:** `P48-008`, meaningful timing on `P48-012`
 
 ### Implemented
 
 - binary safe ceiling is checked automatically at 28,672 bytes from `ORG 32768`, reserving 4 KiB of upper-RAM headroom;
-- ADR target remains common-case `Render_Commit` around/below 12,000 T-states, warning near 14,000.
+- ADR target remains common-case `Render_Commit` around/below 12,000 T-states, warning near 14,000;
+- V4 protocol defines required timing evidence.
 
 ### Acceptance
 
 - [x] binary/headroom checked deterministically
-- [ ] commit timing measured in cycle-aware environment
+- [ ] V4 commit timing measured in cycle-aware environment
 - [ ] maximum tested actors/dirty cells recorded
 - [ ] evidence-based decision confirms 50 Hz or chooses fixed 25 Hz
 
@@ -402,7 +411,7 @@ After renderer/input foundation is verified, create child tasks for:
 - **Status:** `DONE`
 - **Priority:** `P1`
 - **Type:** engineering process / AI regression prevention
-- **Files:** `docs/INCIDENTS.md`, `CHANGELOG.md`, `AGENTS.md`, `docs/TODO.md`
+- **Files:** `docs/INCIDENTS.md`, `CHANGELOG.md`, `docs/TESTING.md`, `AGENTS.md`, `docs/TODO.md`
 
 ### Implemented
 
@@ -411,14 +420,50 @@ After renderer/input foundation is verified, create child tasks for:
 - required root-cause, corrective-action, regression-guard and verification fields;
 - initial incidents record coordinate clobber, Sinclair mapping, and failed legacy renderer architecture;
 - changelog has permanent `Unreleased` workflow;
-- agents are required to read incident history before modifying affected modules and update both incident/changelog records when appropriate.
+- verification protocol defines what is required to close an incident;
+- agents are required to read incident history before modifying affected modules and update incident/changelog records when appropriate.
 
 ### Acceptance
 
 - [x] incident records survive resolution and are never renumbered/deleted
 - [x] regression guards are mandatory for substantive incidents
 - [x] changelog updated continuously, not only at releases
-- [x] TODO/ADR/incident/changelog roles are explicitly separated
+- [x] verification layers/closure rule documented
+- [x] TODO/ADR/incident/changelog/testing roles are explicitly separated
+
+---
+
+## P48-016 - Support explicit canonical opacity masks for future actor art
+
+- **Status:** `READY`
+- **Priority:** `P2`
+- **Type:** sprite asset extensibility
+- **Files:** `src/sprites.asm` or new canonical asset source, `tools/gen_shifted_sprites.py`, `tools/check_project.py`, `src/render.asm` only if generated layout changes
+- **Depends on:** none for design; must be complete before using art that needs opaque zero-valued pixels
+
+### Problem
+
+The current generator treats every zero bit in a canonical sprite bitmap as transparent and derives the mask as the inverse of generated image occupancy. This is correct for current Pac frames.
+
+Future actor art may need an opaque pixel whose displayed bitmap value is zero, or may require a silhouette mask different from the visible one-bit pattern. The current inferred-mask format cannot express that.
+
+### Resolution
+
+Before such art is introduced:
+
+1. define a compact human/AI-editable canonical mask representation paired with each frame;
+2. generate shifted image and shifted opacity mask independently;
+3. keep the renderer's `maskL,imageL,maskR,imageR` hot format if possible;
+4. extend structural checks so every canonical frame has a valid matching opacity mask;
+5. retain backwards compatibility or migrate all current Pac frames deterministically.
+
+### Acceptance
+
+- [ ] canonical art can express opaque zero-valued pixels
+- [ ] generator shifts image and opacity independently
+- [ ] structural checks reject missing/malformed masks
+- [ ] current Pac visuals remain equivalent
+- [ ] V2/V3 verification passes after migration
 
 ---
 
