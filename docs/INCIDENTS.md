@@ -37,9 +37,6 @@ Callers relied on undocumented `DE` survival across video helpers.
 ### Regression guard
 Public assembly routines with reusable coordinates must document preserved/clobbered registers. Runtime and visual maze tests must exercise actual screen writes.
 
-### Verification evidence
-V1/V2 canonical build/runtime/TAP-load pass. V3 maze/pellet restoration remains required.
-
 ---
 
 ## INC-2026-002 - Sinclair 1/2 directions were mapped to the wrong keys
@@ -49,22 +46,13 @@ V1/V2 canonical build/runtime/TAP-load pass. V3 maze/pellet restoration remains 
 - **Affected:** `src/input.asm`
 - **Related TODO:** `P48-002`
 
-### Symptom
-Sinclair joystick modes returned incorrect logical directions.
-
 ### Root cause
 Incorrect Interface 2 keyboard-bit documentation was encoded directly into source.
 
 ### Corrective action
-Correct mappings retained existing public direction enum and `Input_Mode` values:
+Correct mappings retained existing direction enum and `Input_Mode` values:
 - Sinclair 1 (`6 7 8 9 0`): left, right, down, up, fire.
 - Sinclair 2 (`1 2 3 4 5`): left, right, down, up, fire.
-
-### Regression guard
-Keep hardware mappings beside port access and manually smoke-test all four directions whenever `input.asm` changes.
-
-### Verification evidence
-V1/V2 pass; relevant V3 control tests remain required.
 
 ---
 
@@ -76,20 +64,14 @@ V1/V2 pass; relevant V3 control tests remain required.
 - **Related ADR:** `docs/adr/0001-rendering-architecture.md`
 - **Related TODO:** `P48-003`, `P48-010`, `P48-011`, `P48-012`, `P48-013`, `P48-014`
 
-### Symptom
-The engine redrew all 560 maze cells every frame and shifted actor bytes at runtime, consuming budget needed for gameplay.
-
 ### Root cause
 Prototype simulation, background restoration, sprite transformation, and screen commit were mixed without a cycle budget.
 
 ### Corrective action
-Dedicated renderer, prepare/commit split, masked pre-shifted sprites, line LUT, dirty restoration, simulation-only player ownership, static actor attributes, persistent facing state.
-
-### Regression guard
-Canonical build rejects full-maze redraw in `MainLoop`, legacy runtime-shift drawing, simulation-owned screen writes, obsolete actor tables, invalid generated assets, and excessive binary/timing budgets.
+Dedicated renderer, prepare/commit split, masked pre-shifted sprites, line LUT, dirty restoration, simulation-only player ownership, static actor attributes and persistent facing state.
 
 ### Verification evidence
-V1/V2/V4 pass. Owner reports movement is very fluid. Broader V3 rendering/turning coverage remains required.
+V1/V2/V4 pass. Owner V3 reports very fluid movement.
 
 ---
 
@@ -99,11 +81,7 @@ V1/V2/V4 pass. Owner reports movement is very fluid. Broader V3 rendering/turnin
 - **Severity:** `S2`
 - **Affected:** `.github/workflows/verify.yml`
 
-### Root cause
-`cache: pip` was enabled without a committed dependency manifest.
-
-### Corrective action / guard
-Removed pip caching. Do not enable dependency caching without a real validated manifest/path; keep CI tool versions explicit.
+Removed pip caching. Do not enable dependency caching without a validated dependency manifest/path.
 
 ---
 
@@ -114,11 +92,7 @@ Removed pip caching. Do not enable dependency caching without a real validated m
 - **Affected:** former `tools/emulator_smoke.sh`, CI
 - **Related TODO:** `P48-008`, `P48-023`
 
-### Root cause
-Bare-Xvfb GUI focus/window automation was not deterministic enough to be a required verification mechanism.
-
-### Corrective action / guard
-Removed GUI automation from canonical CI. Deterministic runtime coverage uses SkoolKit simulation. Visual V3 evidence remains manual until a deterministic non-GUI capture path exists.
+GUI/Xvfb automation was removed from canonical CI. Deterministic runtime coverage uses SkoolKit; visual V3 remains manual until a deterministic non-GUI capture path exists.
 
 ---
 
@@ -129,11 +103,7 @@ Removed GUI automation from canonical CI. Deterministic runtime coverage uses Sk
 - **Affected:** `tests/perf_harness.asm`, `tools/run_perf_tests.sh`
 - **Related TODO:** `P48-014`
 
-### Root cause
-Raw -> snapshot -> reload altered the exact instruction byte at the measurement boundary.
-
-### Corrective action / guard
-Profile raw assembled bytes directly; inject state deterministically; validate expected opcode at measurement start before accepting timing evidence.
+Profile raw assembled bytes directly; inject state deterministically and validate the expected opcode at the measurement start.
 
 ---
 
@@ -144,11 +114,7 @@ Profile raw assembled bytes directly; inject state deterministically; validate e
 - **Affected:** `.github/workflows/verify.yml`
 - **Related TODO:** `P48-017`
 
-### Root cause
-The workflow assumed `gh release view` exposed the same JSON fields as release listing.
-
-### Corrective action / guard
-Use only supported view fields and check Latest status separately. Validate release-package checksums before publication and require the entire publish job to finish green.
+Use only supported release-view fields, validate release-package checksums and require the complete publish job to finish green.
 
 ---
 
@@ -158,84 +124,123 @@ Use only supported view fields and check Latest status separately. Validate rele
 - **Severity:** `S0`
 - **Detected:** 2026-08-25
 - **Affected:** `src/maze.asm`, `src/sprites.asm`, `tests/runtime_harness.asm`, maze presentation
-- **Related TODO:** `P48-018`, `P48-023`
+- **Related TODO:** `P48-018`, `P48-023`, `P48-026`
 
 ### Symptom
-The owner-provided V3 screenshot showed an unreadable game screen: rows of different colors, large blue/red attribute rectangles, and diagnostic-looking bands instead of a coherent maze.
+An owner V3 screenshot showed broad colored bands/filled rectangles instead of a coherent maze.
 
 ### Root cause
-`Maze_DrawAtOffset` overwrote the intended Spectrum attribute in `A` while translating maze coordinates to screen coordinates. A first attempted repair also used the wrong AF/DE stack order; the new runtime guard caught that attempt before release.
+`Maze_DrawAtOffset` overwrote the intended Spectrum attribute in `A` while translating coordinates. A first attempted repair also used the wrong AF/DE stack order and was caught by the new runtime guard.
 
 ### Corrective action
-Preserve the intended attribute across coordinate translation, test representative attributes through the real `Maze_Draw` path, use black PAPER + bright-blue topology-selected wall boundaries, and use a small 2x2 pellet dot.
+Preserve the intended attribute through coordinate translation, assert representative maze attributes through the real draw path, use black PAPER + bright-blue topology-selected wall boundaries and a small 2x2 pellet dot.
 
 ### Verification evidence
-Run `32800960272` passed. The owner then supplied a V3 screenshot, explicitly said the result was "molto meglio", confirmed responsive controls and very fluid movement, and the original color-band corruption was gone.
+The corrected visual baseline was owner-accepted as "molto meglio" with responsive controls and fluid movement.
 
 ---
 
 ## INC-2026-009 - Alignment-only collision assumption could permit wall penetration
 
-- **Status:** `DETECTED`
+- **Status:** `FIXED_PENDING_VERIFY`
 - **Severity:** `S1`
 - **Detected:** 2026-08-25
 - **Affected:** `src/player.asm`, `tests/runtime_harness.asm`
 - **Related TODO:** `P48-024`
 
 ### Symptom
-The owner reported that Pac occasionally appeared to pass through maze walls during otherwise smooth play.
+Pac occasionally appeared to pass through maze walls.
 
 ### Root cause / evidence
-Static/runtime analysis identified a real weakness: `Player_CanContinue` rechecked collision only when both pixel coordinates were multiples of 8 and otherwise returned success unconditionally. A deterministic one-pixel orthogonal-drift test demonstrated that weakness.
+`Player_CanContinue` previously rechecked collision only at exact 8-pixel alignment. A deterministic one-pixel orthogonal-drift state demonstrated that the previous assumption could permit wall entry.
 
-### Attempted corrective action
-A per-pixel leading-edge 8x8 collision implementation passed deterministic tests, but it was introduced in the same integration batch as pellet mutation. The owner then reported an S0 visual regression (`INC-2026-010`). To restore usability, the entire gameplay batch was rolled back to the previously accepted visual runtime.
+### Corrective action
+Every one-pixel step now checks both corners of the advancing edge of the full 8x8 player box through `Maze_CanMove`.
 
-### Reimplementation rule
-Do not simply reapply the old patch. Reintroduce collision alone after `P48-026` is complete, publish a uniquely-addressed TAP, obtain V3 visual/gameplay confirmation, then close this incident only if sustained play no longer penetrates walls.
+### Verification evidence
+Deterministic Z80 regression passes. The owner V3 video of the real collision/pellet build shows sustained fluid play and does not visibly reproduce wall penetration, but explicit targeted owner confirmation is still required before `CLOSED`.
 
 ---
 
-## INC-2026-010 - Gameplay integration reintroduced an unusable visual screen
+## INC-2026-010 - Cached stale TAP was mistaken for a new visual regression
 
-- **Status:** `FIXED_PENDING_VERIFY`
-- **Severity:** `S0`
+- **Status:** `CLOSED`
+- **Severity:** `S2`
 - **Detected:** 2026-08-25
-- **Affected:** integration between `src/main.asm`, `src/player.asm`, pellet/collision changes and verification coverage
-- **Related TODO:** `P48-023`, `P48-024`, `P48-025`, `P48-026`
+- **Affected:** manual release verification / download procedure
+- **Related TODO:** `P48-023`, `P48-026`
 
 ### Symptom
-After the combined collision/pellet release, the owner supplied a screen recording showing the maze area completely corrupted again with broad colored bands/patterns. Pac itself continued to move fluidly, but the game was unusable.
+The owner initially reported that the collision/pellet build had completely broken the graphics again. A rollback was performed in response.
 
-### Root cause status
-The exact low-level trigger is **not yet proven**. Do not claim that collision or pellet code individually caused the corruption. What is proven is the integration boundary:
+### Actual root cause
+The reported broken screen came from a stale/cached `.tap`, not from the intended current `0.3.4-beta` artifact. After downloading/loading the correct build, owner V3 video showed the maze intact, Pac moving fluidly and pellets disappearing correctly.
 
-- commit `e0e4afce51442df193eb48de18226d53a42ab703` was visually accepted;
-- the later combined collision/pellet release `5acf77665afc5187bcd0baae03a349177ff68955` was visually rejected as unusable;
-- representative-cell CI checks remained green, proving they were insufficient as a release gate.
+Therefore the earlier claim that the collision/pellet integration caused an S0 visual regression was false. The gameplay integration itself was not the source of that screen.
 
-### Immediate corrective action
-Rollback the runtime integration to the exact previously accepted visual baseline:
-
-- `src/main.asm` restored to the pre-pellet startup path;
-- `src/player.asm` restored to the pre-per-pixel-collision implementation;
-- runtime/performance harnesses restored to the same baseline;
-- `src/pellets.asm` may remain in-tree as quarantined/unreferenced work but must not be linked into the game until reintroduced deliberately.
-
-The rollback release at commit `1765eb9128d9fa59b6e66121642af4b80fa5e494` produces `pac48-latest.tap` SHA-256 `3310d2f2577b2f63174d2aa0e60951557def7835b593f6e75b536e8e8ec8adda`, exactly matching the previously visually accepted TAP. GitHub Actions run `32803411922` passed build, runtime, timing, TAP load and publication.
-
-### Regression guard / process change
-`P48-026` must be completed before collision or pellet work resumes:
-
-1. test the full startup drawing path, not only representative cells;
-2. validate the whole 28x20 maze attribute field against authoritative maze state or an accepted deterministic signature;
-3. preserve a known-good binary/TAP checksum as a rollback anchor;
-4. reintroduce gameplay changes one at a time;
-5. require V3 evidence after each visual/gameplay-affecting change before stacking the next one;
-6. use per-commit release URLs for manual verification to eliminate ambiguity from cached `latest` downloads.
+### Corrective action
+- restore the verified collision + pellet code baseline;
+- reverse the unnecessary rollback;
+- use immutable per-commit release URLs and compare SHA-256 during visual-regression diagnosis;
+- keep `P48-026` as a useful whole-screen regression improvement, but not as a blocker caused by this incident.
 
 ### Verification evidence
-Rollback CI run `32803411922`: PASS. Published tag: `build-1765eb9128d9`. Manual V3 confirmation of the rollback TAP is still required before this incident becomes `CLOSED`.
+Commit `b8959392da3ee4d37478082b26c53da80f237746` restores the collision/pellet baseline and adds only the requested Kempston FIRE menu shortcut. GitHub Actions run `32804161378` passed build, runtime, timing, TAP-load and publication. Published TAP SHA-256: `ede09a62b1398f9da70ada45e86eb5f69b16a9ec9667414068d7bb19ec44dac5`.
+
+### Process guard
+When a manual test result contradicts recent deterministic evidence or an immediately prior accepted visual baseline, first identify the exact loaded artifact/tag/checksum before rolling back source code.
+
+---
+
+## INC-2026-011 - Eighteen pellet cells are isolated from the player spawn
+
+- **Status:** `DETECTED`
+- **Severity:** `S1`
+- **Detected:** 2026-08-25
+- **Affected:** `src/maze.asm`, maze validation
+- **Related TODO:** `P48-027`, `P48-019`
+
+### Symptom
+The owner observed pellets confined inside areas Pac cannot enter.
+
+### Proven root cause
+A flood-fill of the authoritative 28x20 `Maze_Map` shows 264 walkable cells but only 246 connected to spawn `(1,1)`. Three isolated six-cell components contain 18 normal pellets:
+
+- `x=1..2, y=9..11`;
+- `(14,9)`, `(14,10)`, `(12,11)`, `(13,11)`, `(14,11)`, `(15,11)`;
+- `x=25..26, y=9..11`.
+
+### Corrective action
+Minimally connect or remove these accidental islands, then add a structural reachability test requiring every player-collectible pellet to be connected to the player spawn.
+
+### Regression guard
+Future maze validation must use graph reachability, not only row length/dimensions/cell-value checks.
+
+---
+
+## INC-2026-012 - Junction turn request can feel stuck or miss the first opening
+
+- **Status:** `DETECTED`
+- **Severity:** `S1`
+- **Detected:** 2026-08-25
+- **Affected:** `src/input.asm`, `src/player.asm`, control tests
+- **Related TODO:** `P48-028`
+
+### Symptom
+Around some exits Pac feels stuck. Example: while travelling horizontally, holding `down + right` is expected to queue a downward turn and take the first legal downward opening.
+
+### Current contributing design
+- `Input_Read` collapses simultaneous directions to one direction using fixed per-device priority;
+- `Pac_ReqDir` stores only that collapsed result;
+- `Player_TryRequestedDir` executes a turn only when both pixel axes are exactly 8-pixel aligned.
+
+This is sufficient for basic movement but not yet the forgiving queued-turn behavior expected from an arcade maze game.
+
+### Corrective action plan
+Implement direction-aware requested-turn buffering: preserve a perpendicular requested turn while the current direction remains held, execute it at the first legal junction, and evaluate a bounded junction grace/lookahead that does not permit wall clipping.
+
+### Regression guard
+Add deterministic symmetric cases for all four turn directions, including a requested turn held across multiple blocked cells before the first legal opening.
 
 ---
 
