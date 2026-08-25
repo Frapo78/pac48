@@ -33,6 +33,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install 'skoolkit==10.1'
           command -v bin2tap.py
+          command -v tap2sna.py
           command -v trace.py
           command -v snapinfo.py
 
@@ -58,8 +59,11 @@ jobs:
           test -s src/generated/pac_shifted.asm
           test -s build/runtime_harness.trace.log
           test -s build/perf_results.txt
+          test -s build/tap_load.z80
+          test -s build/tap_load.log
           wc -c build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap"
           cat build/perf_results.txt
+          tail -n 30 build/tap_load.log
 
       - name: Prepare verified release package
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -88,6 +92,7 @@ jobs:
             echo "- headless 48K Z80 runtime harness"
             echo "- contention-aware Render_Commit timing measurements"
             echo "- TAP generation"
+            echo "- simulated fresh-48K tape load reaching entry point 32768 (0x8000)"
             echo
             echo "Render_Commit timing evidence:"
             sed 's/^/- /' build/perf_results.txt
@@ -110,6 +115,8 @@ jobs:
             build/runtime_harness.z80
             build/perf_results.txt
             build/perf_*_measure.log
+            build/tap_load.z80
+            build/tap_load.log
 
       - name: Upload release package for publication
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
