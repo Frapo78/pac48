@@ -1,21 +1,23 @@
 ; ==========================================
 ; PAC48 - main.asm
-; Entry point e game loop
+; Entry point and frame orchestration
 ; ==========================================
 
         ORG 32768
 
-        JP START              ; salta oltre i dati inclusi e raggiunge l'entry point
+        JP START
 
-; ---- include ordine LOGICO
+; ---- include order: low-level/state -> data -> gameplay -> renderer
         INCLUDE "config.asm"
         INCLUDE "memory.asm"
         INCLUDE "menu.asm"
         INCLUDE "input.asm"
         INCLUDE "video.asm"
         INCLUDE "sprites.asm"
+        INCLUDE "generated/pac_shifted.asm"
         INCLUDE "maze.asm"
         INCLUDE "player.asm"
+        INCLUDE "render.asm"
 
 ; ==========================================
 ; ENTRY POINT
@@ -24,27 +26,33 @@ START:
         DI
         LD SP, 65535
 
-        CALL Menu_Run          ; sceglie CtrlMode
-        CALL Video_Clear       ; rimuove menu prima del gioco
+        CALL Menu_Run
+        CALL Video_Clear
+        CALL Video_InitLineTable
         CALL Maze_Draw
+        CALL Render_Init
+        CALL Render_Prepare
 
         EI
 
 ; ==========================================
 ; MAIN GAME LOOP
+;
+; Commit is intentionally first after HALT: all expensive simulation and
+; descriptor preparation happen after the short screen update phase.
 ; ==========================================
 MainLoop:
         HALT
+        CALL Render_Commit
 
-        CALL Input_Read        ; aggiorna Dir
+        CALL Input_Read
         OR A
         JR Z, .keep_dir
         LD (Pac_ReqDir), A
 .keep_dir:
-        CALL Player_Update     ; aggiorna PacX/PacY
+        CALL Player_Update
         CALL Video_BeginFrame
-        CALL Maze_Draw
-        CALL Player_Draw
+        CALL Render_Prepare
         CALL Video_EndFrame
 
         JP MainLoop
