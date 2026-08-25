@@ -1,11 +1,14 @@
-Pac_Attr        EQU 64 | (COLOR_BLACK << 3) | COLOR_YELLOW
+; ==========================================
+; PAC48 - player.asm
+; Player simulation only; no direct screen writes
+; ==========================================
 
 Player_Update:
     CALL Player_TryRequestedDir
 
     LD A, (Pac_Dir)
     OR A
-    RET Z                  ; nessuna direzione
+    RET Z
 
     CALL Player_CanContinue
     OR A
@@ -21,18 +24,21 @@ Player_Update:
     LD HL, Pac_PixelY
     DEC (HL)
     JR .sync_tile
+
 .check_down:
     CP 2
     JR NZ, .check_left
     LD HL, Pac_PixelY
     INC (HL)
     JR .sync_tile
+
 .check_left:
     CP 3
     JR NZ, .check_right
     LD HL, Pac_PixelX
     DEC (HL)
     JR .sync_tile
+
 .check_right:
     CP 4
     JR NZ, .done
@@ -41,11 +47,10 @@ Player_Update:
 
 .sync_tile:
     CALL Player_SyncTile
-
 .done:
     RET
 
-; Prova a cambiare direzione solo quando Pac-Man e' allineato alla griglia.
+; Prova a cambiare direzione solo quando il player e' allineato alla griglia.
 Player_TryRequestedDir:
     LD A, (Pac_ReqDir)
     OR A
@@ -62,8 +67,8 @@ Player_TryRequestedDir:
     LD (Pac_Dir), A
     RET
 
-; Ritorna A=1 se la direzione corrente puo' continuare.
-; Fra due celle la mossa e' gia' stata validata; ai nodi ricontrolla il tile successivo.
+; Out: A=1 se la direzione corrente puo' continuare, A=0 se bloccata.
+; Fra due celle la mossa e' gia' stata validata; ai nodi ricontrolla il tile.
 Player_CanContinue:
     CALL Player_IsAligned
     OR A
@@ -104,7 +109,7 @@ Player_LoadNextTileForDir:
     INC D
     RET
 
-; Ritorna A=1 se Pac_PixelX e Pac_PixelY sono multipli di 8.
+; Out: A=1 se Pac_PixelX e Pac_PixelY sono multipli di 8, altrimenti A=0.
 Player_IsAligned:
     LD A, (Pac_PixelX)
     AND 7
@@ -115,7 +120,7 @@ Player_IsAligned:
     LD A, 1
     RET
 
-; Out: D=x tile mappa, E=y tile mappa
+; Out: D=x tile mappa, E=y tile mappa.
 Player_LoadTile:
     LD A, (Pac_PixelX)
     SRL A
@@ -137,110 +142,4 @@ Player_SyncTile:
     LD (Pac_X), A
     LD A, E
     LD (Pac_Y), A
-    RET
-
-Player_Erase:
-    LD A, (Pac_PixelX)
-    SUB 8
-    LD D, A
-    LD A, (Pac_PixelY)
-    SUB 8
-    LD E, A
-    CALL Player_RestoreBlock3x3
-    RET
-
-; In: D/E = top-left pixel of 3x3 tile restore area
-Player_RestoreBlock3x3:
-    CALL Player_RestoreRow3
-    LD A, E
-    ADD A, 8
-    LD E, A
-    CALL Player_RestoreRow3
-    LD A, E
-    ADD A, 8
-    LD E, A
-    CALL Player_RestoreRow3
-    RET
-
-; In: D/E = first pixel in row. Restores 3 adjacent tiles.
-Player_RestoreRow3:
-    PUSH DE
-    CALL Player_RestoreCellAtPixel
-    POP DE
-    LD A, D
-    ADD A, 8
-    LD D, A
-    PUSH DE
-    CALL Player_RestoreCellAtPixel
-    POP DE
-    LD A, D
-    ADD A, 8
-    LD D, A
-    CALL Player_RestoreCellAtPixel
-    RET
-
-; In: D=x pixel schermo, E=y pixel schermo
-Player_RestoreCellAtPixel:
-    LD A, D
-    SRL A
-    SRL A
-    SRL A
-    SUB Maze_OffsetX
-    LD D, A
-    LD A, E
-    SRL A
-    SRL A
-    SRL A
-    SUB Maze_OffsetY
-    LD E, A
-    CALL Maze_DrawCell
-    RET
-
-Player_Draw:
-    LD A, (Pac_PixelX)
-    LD D, A
-    LD A, (Pac_PixelY)
-    LD E, A
-
-    PUSH DE                     ; conserva coordinate schermo
-
-    LD A, (FrameCounter)
-    SRL A
-    SRL A
-    SRL A
-    AND 7
-    LD C, A
-
-    LD A, (Pac_Dir)
-    CP 1
-    JR Z, .table_up
-    CP 2
-    JR Z, .table_down
-    CP 3
-    JR Z, .table_left
-    LD DE, Pac_FrameTableRight
-    JR .table_selected
-.table_up:
-    LD DE, Pac_FrameTableUp
-    JR .table_selected
-.table_down:
-    LD DE, Pac_FrameTableDown
-    JR .table_selected
-.table_left:
-    LD DE, Pac_FrameTableLeft
-.table_selected:
-    LD A, C
-    LD L, A
-    LD H, 0
-    ADD HL, HL                 ; word offset
-    ADD HL, DE
-    LD E, (HL)
-    INC HL
-    LD D, (HL)
-    EX DE, HL                  ; HL -> sprite
-
-    POP DE                     ; D=x, E=y
-    LD A, Pac_Attr
-    CALL Video_DrawSpritePx
-
     RET
