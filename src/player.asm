@@ -266,7 +266,7 @@ Player_LoadCenterTile:
 ; Out: A=1 when a pellet changed to empty, A=0 otherwise.
 Player_ConsumeCurrentPellet:
     CALL Player_LoadCenterTile
-    JP Maze_ConsumePellet
+    JP Pellet_ConsumeAt
 
 Player_SyncTile:
     CALL Player_LoadTile
