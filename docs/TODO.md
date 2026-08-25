@@ -1,297 +1,245 @@
 # PAC48 Technical TODO
 
-This is the canonical work queue for PAC48. Important work must not live only in chat or commit messages.
+Canonical work queue for PAC48. Important work must not live only in chat or commit messages.
 
-Read before implementation:
+## Mandatory reading order for humans and AI agents
 
 1. `AGENTS.md`
 2. `docs/ARCHITECTURE.md`
 3. `docs/adr/0001-rendering-architecture.md`
-4. `docs/INCIDENTS.md`
-5. `docs/TESTING.md`
-6. `CHANGELOG.md`
-7. this file
+4. `docs/PACMAN_REFERENCE.md`
+5. `docs/INCIDENTS.md`
+6. `docs/TESTING.md`
+7. `CHANGELOG.md`
+8. this file
 
 ## Agent workflow
 
 - Select the highest-priority unblocked task unless the owner explicitly selects another.
-- Inspect all listed files and related incidents before editing.
+- Inspect related incidents/reference material before editing.
 - Use stable `P48-###` IDs; never renumber or reuse IDs.
 - Create a new task for newly discovered scope instead of silently expanding another task.
 - Run the canonical build for code/build changes.
 - Update changelog and incident records when applicable.
 - Code without required evidence is `VERIFY`, not `DONE`.
-- A green build is not a substitute for owner-visible V3 verification when player-visible graphics or control feel changes.
-- During manual regression diagnosis, prefer an immutable per-commit release URL and verify the SHA-256 so a cached TAP cannot be mistaken for the current build.
-- Every screenshot/manual video should include or preserve the on-screen `V<version> B<build-id>` stamp introduced by `P48-030`.
+- A green build is not a substitute for owner-visible V3 verification when graphics or control feel changes.
+- Prefer immutable per-commit TAP filenames and SHA-256 during manual regression diagnosis.
+- Every screenshot/video should preserve the visible `V<version> B<build-id>` stamp.
 
-## Status
+Statuses: `READY`, `IN_PROGRESS`, `BLOCKED`, `VERIFY`, `DONE`, `WONTFIX`.
 
-- `READY` — ready to implement
-- `IN_PROGRESS` — being implemented
-- `BLOCKED` — dependency/decision prevents work
-- `VERIFY` — implementation exists but required evidence remains
-- `DONE` — implementation and required verification complete
-- `WONTFIX` — intentionally rejected, rationale required
-
-## Priority
-
-- `P0` correctness/corruption/unusable behavior
-- `P1` architecture/compatibility/gameplay foundation
-- `P2` maintainability/tooling/performance
-- `P3` later enhancement
+Priorities: `P0` unusable/correctness, `P1` gameplay/architecture, `P2` tooling/performance/maintainability, `P3` later enhancement.
 
 ---
 
-# Current verified baseline — 2026-08-25
+# Current verified baseline — 0.3.8-beta
 
-Owner V3 video confirms the gameplay renderer is intact, Pac movement is fluid and normal pellets disappear persistently. The remaining control complaint is input/turn semantics rather than frame-rate performance. The 0.3.6 owner recording also exposed a deterministic diagonal dead-end stall and an unreadable build stamp; both have been corrected in 0.3.7 and remain pending owner V3 confirmation.
+Verified code/release:
 
-Current verified release:
+- commit: `d25c5f8304f510c76be638e95dbf14d5b946b096`;
+- build ID: `D25C5F8`;
+- CI run: `32834022347` — PASS;
+- immutable TAP: `pac48-0.3.8-beta-bD25C5F8.tap`;
+- TAP SHA-256: `d3189c5be91117de6ee97f0a34ed95590b371d4614a3df23d88ca688d123d70f`;
+- fresh-48K TAP load reaches `$8000`;
+- assembly: 0 errors / 0 warnings;
+- control/runtime/render/performance harnesses: PASS;
+- `Render_Commit`: 4341 / 5497 / 9184 T-states for dirty1 / dirty2 / dirty4.
 
-- semantic version: `0.3.7-beta`;
-- commit: `8077948ded9535cd1269a816ec304211504ed9fb`;
-- build ID: `8077948`;
-- intended on-screen stamp: `V0.3.7 B8077948` using printable ZX Spectrum ROM glyphs at `$3D00`;
-- tag: `build-8077948ded95`;
-- CI run: `32807389635` — PASS;
-- TAP size: 8986 bytes;
-- TAP SHA-256: `ed2bb9672db57f93f273957ffc40620ad2dec103a55f737958cee166d6990fbd`;
-- preferred immutable/manual-test filename: `pac48-0.3.7-beta-b8077948.tap`;
-- fresh 48K TAP load reaches `$8000`;
-- dedicated Z80 control-semantics harness: PASS, including the exact diagonal dead-end regression from owner video;
-- `Render_Commit` remains 4341 / 5497 / 9184 T-states for dirty1 / dirty2 / dirty4.
+0.3.8 also introduces the first arcade-inspired 4:3 maze candidate:
+
+- 28 x 20 logical cells, preserving 8x8 tiles;
+- horizontally symmetric;
+- Pac start below centre at `(13,15)`, initially facing left;
+- 234 player-reachable cells;
+- 198 normal pellets, all reachable;
+- zero accidental player dead ends;
+- topology guard runs in every canonical build.
+
+External research and design rationale are canonicalized in `docs/PACMAN_REFERENCE.md`.
 
 ---
 
-# ACTIVE MILESTONE — Gameplay usability before larger maze/HUD work
+# ACTIVE MILESTONE — Arcade-feel foundation
 
-Recommended order:
+Recommended order after owner V3 on the 0.3.8 maze:
 
-`P48-029 V3 -> P48-030 V3 -> P48-028 V3 -> P48-027 -> P48-026/P48-023 -> P48-019 -> P48-020/021/022 -> broader P48-009`
+`P48-030 V3 -> P48-027/P48-019 V3 -> P48-031 -> P48-034 -> P48-032 -> P48-033/P48-039 -> P48-035 -> P48-036/P48-037 -> P48-038 -> broader P48-009`
+
+The key change after Pac-Man arcade research is that `P48-031` supersedes further patches around exact 8-pixel turn alignment. The final control model should reproduce arcade-style pre-turn/centering rather than keep adding special cases to `%8 == 0`.
 
 ---
 
 ## P48-018 — Recover a clean, readable maze baseline
-
-- **Status:** `DONE`
-- **Priority:** `P0`
-- **Incident:** `INC-2026-008`
-
-Owner V3 confirmed the corrected black playfield, thin blue wall boundaries, small pellets, responsive controls and fluid movement.
-
----
+- **Status:** `DONE` | **Priority:** `P0` | **Incident:** `INC-2026-008`
+- Owner V3 accepted black playfield, thin blue walls, pellets and fluid renderer.
 
 ## P48-024 — Harden player collision at every pixel step
-
-- **Status:** `VERIFY`
-- **Priority:** `P0`
-- **Type:** gameplay correctness
-- **Files:** `src/player.asm`, `tests/runtime_harness.asm`
-- **Incident:** `INC-2026-009`
-
-Implemented baseline:
-
-- every one-pixel step validates both corners of the advancing 8x8 actor edge;
-- wall/outside checks delegate to `Maze_CanMove`;
-- deterministic one-pixel orthogonal-drift regression passes;
-- owner V3 video shows sustained fluid play and did not reproduce the earlier wall-penetration symptom.
-
-Keep `VERIFY` until the owner explicitly confirms the wall-penetration issue itself is gone during targeted sustained testing.
-
----
+- **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-009`
+- Full 8x8 advancing edge is checked each pixel. Deterministic drift test passes. Close after sustained owner V3 confirms no wall penetration.
 
 ## P48-025 — Consume normal pellets persistently
+- **Status:** `DONE` | **Priority:** `P1`
+- `Maze_CellPellet -> Maze_CellEmpty`, centre-based pickup, dirty restoration and owner V3 confirmed.
 
-- **Status:** `DONE`
-- **Priority:** `P1`
-- **Type:** gameplay state
-- **Files:** `src/pellets.asm`, `src/player.asm`, `src/main.asm`, runtime tests
-
-Verified:
-
-- pellet cells mutate from `Maze_CellPellet` to `Maze_CellEmpty`;
-- pickup is based on the player centre;
-- spawn pellet is consumed before initial draw;
-- dirty restoration renders consumed cells empty;
-- deterministic Z80 tests pass;
-- owner V3 video visibly confirms pellets disappear during traversal.
-
-Pellet counter/score remain separate future work.
-
----
-
-## P48-026 — Strengthen full startup-screen regression gate
-
-- **Status:** `READY`
-- **Priority:** `P1`
-- **Type:** regression prevention / release safety
-- **Files:** runtime/startup harness, `docs/TESTING.md`, build checks
+## P48-026 — Strengthen whole-screen startup regression gate
+- **Status:** `READY` | **Priority:** `P1`
 - **Incidents:** `INC-2026-008`, `INC-2026-010`
+- Validate all 28x20 attributes and a deterministic whole-maze bitmap/signature; keep manual V3 for composition.
 
-### Goal
+## P48-027 — Remove unreachable pellet islands and enforce connectivity
+- **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-011`
+- **Implemented in:** `14e91f68b4c77b681adafb1d21a45f8cb599026c` + fixture alignment `d25c5f8304f510c76be638e95dbf14d5b946b096`
 
-Go beyond representative-cell assertions and make whole-field screen correctness more deterministic while retaining manual V3 for composition/control feel.
+Implemented:
+- replaced the prototype topology with the 0.3.8 connected landscape maze;
+- `tools/check_maze_topology.py` flood-fills from canonical Pac start;
+- every normal pellet must be player-reachable;
+- current classic layout must remain horizontally symmetric;
+- accidental player dead ends fail the build.
 
-### Acceptance
+Evidence:
+- 234 player-reachable cells;
+- 198 reachable pellets;
+- 0 unreachable pellets;
+- 0 dead ends;
+- canonical CI PASS.
 
-- [ ] validate all 28x20 maze attribute cells against authoritative maze state;
-- [ ] add deterministic whole-maze bitmap/signature evidence where practical;
-- [ ] document immutable per-commit TAP + checksum procedure for V3;
-- [ ] a deliberate broad attribute/bitmap corruption fails before release publication.
+Remaining:
+- [ ] owner V3 confirms no visually awkward/accidentally sealed routes.
 
----
+## P48-028 — Interim direction-aware joystick queue
+- **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-012`, `INC-2026-014`
 
-## P48-027 — Remove unreachable pellet islands and add connectivity guard
+Implemented and guarded:
+- simultaneous direction mask;
+- perpendicular preference;
+- immediate 180-degree reversal;
+- stale-turn cancellation;
+- held-direction fallback at blocked diagonal dead ends.
 
-- **Status:** `READY`
-- **Priority:** `P0`
-- **Type:** maze/gameplay correctness
-- **Files:** `src/maze.asm`, structural tests, `docs/TODO.md`
-- **Incident:** `INC-2026-011`
-- **Depends on:** none
+This fixes concrete stalls but owner feedback still describes overall cornering as sluggish. Do **not** keep extending this exact-alignment model indefinitely; final cornering is `P48-031`.
 
-### Proven problem
+## P48-029 — Start Kempston from Kempston FIRE in menu
+- **Status:** `VERIFY` | **Priority:** `P1`
+- Structural/build guard passes; owner V3 confirmation remains.
 
-The current `Maze_Map` has 264 walkable cells, but only 246 are connected to the player spawn `(1,1)`. Eighteen pellet cells are unreachable in three isolated 6-cell components:
+## P48-030 — Readable version/build stamp in gameplay
+- **Status:** `VERIFY` | **Priority:** `P1` | **Incident:** `INC-2026-013`
+- Uses Spectrum ROM printable glyphs from `$3D00` after subtracting ASCII 32; generated version+commit identity; immutable TAP naming.
+- [ ] owner V3 confirms the 0.3.8 stamp is clearly readable.
 
-- left island: `x=1..2, y=9..11`;
-- centre island: `(14,9)`, `(14,10)`, `(12,11)`, `(13,11)`, `(14,11)`, `(15,11)`;
-- right island: `x=25..26, y=9..11`.
+## P48-019 — Arcade-inspired 4:3 maze topology
+- **Status:** `VERIFY` | **Priority:** `P1` | **Depends on:** `P48-027`
+- **Reference:** `docs/PACMAN_REFERENCE.md`
 
-### Resolution plan
+Implemented first candidate in 0.3.8:
+- keep original-class 28-tile width and 8x8 cells;
+- compress vertical structure from the arcade's 31 maze rows to 20 Spectrum rows instead of shrinking tiles;
+- retain recognizable upper blocks, central reserved structure, symmetric lower routes and below-centre Pac spawn;
+- side tunnel silhouette is not faked as a dead end: functional warp metadata is deferred to `P48-034`.
 
-- minimally open/connect the current topology without degrading the accepted visual readability;
-- add a deterministic flood-fill/reachability check from the player spawn;
-- require every normal pellet/power-pellet candidate to belong to the player-reachable component;
-- preserve future ghost-house reservations explicitly rather than accidentally creating sealed pellet regions.
+Acceptance:
+- [x] static topology/connectivity guard PASS;
+- [x] no unreachable pellets/dead ends;
+- [x] horizontal symmetry;
+- [ ] owner V3 accepts landscape composition;
+- [ ] future ghost-house/tunnel/power-pellet metadata added under `P48-034/021/022`.
 
-### Acceptance
+## P48-020 — Score/high-score HUD and reserved bands
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-019` V3
 
-- [ ] zero pellet cells outside the player-reachable component;
-- [ ] connectivity test fails if a future edit creates an unreachable pellet;
-- [ ] V3 maze remains readable after the minimal topology correction.
+## P48-021 — Power pellets and life/bonus strip
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-019`, `P48-020`, `P48-034`
 
----
+## P48-022 — Ghost-house presentation and actor color strategy
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-019`, `P48-016`, `P48-034`
 
-## P48-028 — Make joystick turning behave like a queued arcade turn
-
-- **Status:** `VERIFY`
-- **Priority:** `P0`
-- **Type:** control feel / input semantics
-- **Files:** `src/input.asm`, `src/memory.asm`, `src/player.asm`, `tests/control_harness.asm`, `tools/run_control_tests.sh`
-- **Incidents:** `INC-2026-012`, `INC-2026-014`
-- **Current implementation:** `8077948ded9535cd1269a816ec304211504ed9fb`
-
-### Implemented
-
-- physical directions are collected as a simultaneous four-bit mask instead of being collapsed immediately by device-specific fixed priority;
-- the full physically-held state is retained in `Input_HeldMask` for the player update;
-- while travelling horizontally, a vertical component is the preferred queued turn; while travelling vertically, a horizontal component is preferred;
-- holding only the current travel direction explicitly returns that direction, replacing/cancelling any stale queued perpendicular turn;
-- 180-degree reversals are applied immediately inside the current corridor instead of waiting for the next 8-pixel node;
-- if the preferred perpendicular turn is blocked at a dead end and the current travel direction also cannot continue, a physically-held legal reversal is selected and moved in the same frame instead of leaving Pac stopped;
-- 90-degree turns remain grid/legal-opening constrained, preserving collision safety;
-- semantics are shared by Kempston, keyboard/cursors and Sinclair modes.
-
-### Deterministic evidence
-
-The dedicated Z80 control harness verifies:
-
-- right travel + down/right => DOWN request;
-- down travel + down/right => RIGHT request;
-- current-direction-only input replaces stale queued intent;
-- symmetric up/left case;
-- opposite cardinal input remains valid;
-- mid-cell 180-degree reversal changes direction immediately and moves one pixel safely;
-- exact owner-video regression: at maze cell `(1,3)`, LEFT and DOWN blocked, RIGHT open, `DOWN+RIGHT` held while moving LEFT => Pac selects RIGHT and moves one pixel in the same update.
-
-CI run `32807389635`: PASS.
-
-### Acceptance
-
-- [x] direction-aware diagonal semantics pass Z80 tests;
-- [x] stale queued turn cancellation passes Z80 test;
-- [x] immediate reversal passes Z80 test;
-- [x] diagonal dead-end fallback passes exact topology regression;
-- [x] no diagonal physical movement is introduced;
-- [ ] V3: owner confirms corridors no longer end in artificial stalls and junction control feels immediate/predictable.
-
----
-
-## P48-029 — Start Kempston mode from Kempston FIRE in menu
-
-- **Status:** `VERIFY`
-- **Priority:** `P1`
-- **Type:** input/menu usability
-- **Files:** `src/menu.asm`
-- **Implemented in:** `b8959392da3ee4d37478082b26c53da80f237746`
-
-### Implemented
-
-The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Active-high FIRE bit 4 selects `Input_Mode=1` and starts the game as Kempston. `tools/check_build_identity.py` guards this behavior structurally.
-
-### Acceptance
-
-- [x] canonical build/runtime/TAP verification passes;
-- [x] verified release published;
-- [ ] V3: owner confirms pressing Kempston FIRE at the menu starts the game in Kempston mode.
-
----
-
-## P48-030 — Version/build stamp visible in every gameplay screenshot
-
-- **Status:** `VERIFY`
-- **Priority:** `P1`
-- **Type:** release identity / visual diagnostics
-- **Files:** `VERSION`, `tools/build.sh`, `tools/check_build_identity.py`, `src/generated/build_info.asm`, `src/hud.asm`, `src/main.asm`, `src/menu.asm`, release workflow
-- **Incident:** `INC-2026-013`
-- **Current implementation:** `8077948ded9535cd1269a816ec304211504ed9fb`
-
-### Implemented
-
-- version advanced to `0.3.7-beta`;
-- `VERSION` remains the semantic-version source for generated menu title and TAP filenames;
-- the build derives a seven-character uppercase build ID from the exact Git commit; local dirty builds are marked with a leading `D`;
-- the rejected custom 3x5 minifont remains removed;
-- `V<core-version> B<build-id>` is drawn with the ZX Spectrum ROM/system 8x8 font, centered in the free top character row;
-- ROM glyph indexing is now correct: `HUD_GetRomGlyph` subtracts ASCII 32, therefore printable glyph data starts at `$3D00`; the prior `$3C00` base was 256 bytes early and produced unreadable ROM data;
-- current release is intended to display `V0.3.7 B8077948`;
-- release assets include `pac48-0.3.7-beta.tap` and immutable/cache-safe `pac48-0.3.7-beta-b8077948.tap`;
-- build identity checks reject `$3C00`, require `$3D00`, and reject reintroduction of the old mini-font.
-
-### Acceptance
-
-- [x] canonical build passes with generated version/build metadata;
-- [x] CI proves build ID equals the release commit prefix;
-- [x] versioned and version+build TAP assets are published;
-- [x] build-specific TAP passes fresh-48K load verification;
-- [x] build guard requires correct printable ROM font base `$3D00`;
-- [ ] V3: owner confirms `V0.3.7 B8077948` is clearly readable in the gameplay screenshot.
-
----
-
-## P48-019 — Redesign maze topology for a classic centered composition
-
-- **Status:** `READY`
-- **Priority:** `P1`
-- **Depends on:** `P48-027`
-
-Goal: replace the generic 28x20 topology with a deliberate symmetric arcade-style maze, while preserving guaranteed reachability, central ghost-house reservation, tunnel opportunities and four power-pellet positions.
-
----
-
-## P48-020 — Add score/high-score HUD and reserve screen bands
-- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-019`
-
-## P48-021 — Add power-pellet visual/state cells and life/bonus strip
-- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-019`, `P48-020`
-
-## P48-022 — Add ghost-house geometry and actor color strategy
-- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-019`, `P48-016`
-
-## P48-023 — Establish a visual regression gate
+## P48-023 — Visual regression gate
 - **Status:** `READY` | **Priority:** `P1` | **Depends on:** `P48-018`
+
+---
+
+# Arcade-research-derived tasks
+
+## P48-031 — Replace exact-node turning with true arcade cornering
+- **Status:** `READY` | **Priority:** `P0`
+- **Files:** `src/input.asm`, `src/player.asm`, state memory, control harness
+- **Reference:** `docs/PACMAN_REFERENCE.md`, Pac-Man Dossier cornering analysis
+- **Supersedes final control scope of:** `P48-028`
+
+### Problem
+The current model still fundamentally waits for exact 8-pixel alignment for 90-degree turns. The original arcade allows a requested perpendicular turn around the junction and recentres the actor into the destination corridor. This is the main remaining source of "sluggish" steering.
+
+### Plan
+- represent current vector and requested/next vector independently;
+- define a bounded pre-turn window before junction centre;
+- begin a legal requested corner as soon as it enters that window;
+- auto-centre the orthogonal coordinate onto the new corridor;
+- support a bounded post-turn completion phase if required by the reference behavior;
+- keep collision-box wall safety authoritative;
+- use symmetric rules for all four directions/devices;
+- remove obsolete exact-node special cases after tests pass.
+
+### Acceptance
+- [ ] holding a turn before an opening takes the first legal opening without a perceptible pause;
+- [ ] late-but-valid input around the opening can still complete the turn;
+- [ ] repeated diagonal steering feels continuous rather than stop/start;
+- [ ] no wall clipping;
+- [ ] deterministic pre-turn/post-turn harnesses pass;
+- [ ] owner V3 describes controls as arcade-like/immediate.
+
+## P48-032 — Add 50 Hz actor movement-pattern engine
+- **Status:** `READY` | **Priority:** `P1` | **Depends on:** `P48-031`
+- Use rotating bit patterns to decide per-frame one-pixel movement rather than fractional arithmetic.
+- Define data-driven patterns for Pac normal/energized and ghost normal/frightened/tunnel/Elroy.
+- Preserve arcade speed ratios/feel but derive Spectrum 50 Hz patterns rather than copying ~60 Hz values blindly.
+- Add deterministic distance-per-N-frames tests.
+
+## P48-033 — Deterministic 50 Hz gameplay state machine and event order
+- **Status:** `READY` | **Priority:** `P1`
+- Formal states: at minimum READY, PLAY, DYING, LEVEL_CLEAR, GAME_OVER.
+- Make one authoritative per-frame event order around `HALT`.
+- Centralize timers/counters rather than scattering frame logic across modules.
+- Document when pellet/energizer, ghost transitions, fruit, collisions, score and level completion take effect.
+
+## P48-034 — Layer maze geometry, collectibles and special metadata
+- **Status:** `READY` | **Priority:** `P1` | **Depends on:** `P48-019` V3
+- Keep geometry/player walkability separate from collectible state and special flags.
+- Add explicit metadata for tunnel/warp endpoints, ghost tunnel slow zones, ghost house, door, actor spawns, energizers, fruit and arcade no-UP ghost intersections.
+- Extend topology validator for player-only/ghost-only regions instead of weakening generic connectivity checks.
+- Functional side tunnels belong here.
+
+## P48-035 — Common tile-target ghost navigation core
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-031`, `P48-034`
+- No runtime A*/BFS for ordinary pursuit.
+- Decide at/approaching intersections, enumerate legal directions, normally remove reversal, evaluate next-tile distance to target, deterministic tie priority UP -> LEFT -> DOWN -> RIGHT.
+- Common code owns navigation; personality code supplies targets.
+
+## P48-036 — Implement Blinky/Pinky/Inky/Clyde target functions
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-035`
+- Blinky targets Pac; Pinky targets ahead; Inky combines Pac/Blinky vector; Clyde switches based on distance.
+- Preserve intentional arcade quirks only when verified/documented; do not accidentally recreate bugs without a decision.
+
+## P48-037 — Scatter / Chase / Frightened global ghost commander
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-033`, `P48-035`
+- Table-driven schedule, reversal requests on mode changes, frightened override/expiry and per-ghost state integration.
+
+## P48-038 — Data-driven level progression, release rules and Cruise Elroy
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-032`, `P48-033`, `P48-037`
+- Tables for actor speed patterns, frightened duration, tunnel speed, house release, scatter/chase schedule, Elroy thresholds/speeds and fruit parameters.
+- Avoid `IF level == ...` logic scattered throughout gameplay modules.
+
+## P48-039 — Same-frame gameplay-order regression harness
+- **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-033`
+- Deterministically test simultaneous/adjacent events:
+  - pellet/energizer + collision;
+  - frightened expiry + collision;
+  - final pellet + death;
+  - fruit expiry + pickup;
+  - ghost mode change + house transition;
+  - tunnel/warp + movement-pattern skip.
+- Once an event order is selected, future agents must not silently reorder it.
 
 ---
 
@@ -300,7 +248,7 @@ Goal: replace the generic 28x20 topology with a deliberate symmetric arcade-styl
 ## P48-001 — Preserve maze coordinates across attribute drawing
 - **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-001`
 
-## P48-002 — Correct Sinclair 1 and Sinclair 2 directions
+## P48-002 — Correct Sinclair 1/2 directions
 - **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-002`
 
 ## P48-003 — Remove full-maze redraw from gameplay frames
@@ -312,62 +260,46 @@ Goal: replace the generic 28x20 topology with a deliberate symmetric arcade-styl
 ## P48-005 — Synchronize documentation with pixel movement
 - **Status:** `DONE` | **Priority:** `P1`
 
-## P48-006 — Add exact GPL license file
+## P48-006 — Add exact project license file
 - **Status:** `BLOCKED` | **Priority:** `P1`
-- Owner must explicitly choose the exact GPL variant; agents must not guess.
+- Owner must explicitly choose exact license/variant; agents must not infer it from third-party GPL research.
 
-## P48-007 — Make VERSION the single release-version source
+## P48-007 — VERSION as single semantic-version source
 - **Status:** `DONE` | **Priority:** `P2`
-- `tools/build.sh` generates menu/build strings and all versioned filenames from `VERSION`; `src/menu.asm` no longer hardcodes a semantic version. Guarded by `tools/check_build_identity.py`.
 
-## P48-008 — Establish repeatable verification baseline
+## P48-008 — Repeatable verification baseline
 - **Status:** `VERIFY` | **Priority:** `P2`
 
-## P48-009 — Implement first complete gameplay loop
+## P48-009 — First complete gameplay loop
 - **Status:** `BLOCKED` | **Priority:** `P2`
-- Pellet consumption is complete. Remaining children include pellet count, score, level completion, lives, enemies, collisions, game over, energizers and sound.
+- Pellet consumption exists. Remaining gameplay is now decomposed into `P48-031..039`, plus score/lives/level completion/sound.
 
-## P48-010 — Dedicated render module and prepare/commit phases
+## P48-010 — Dedicated render module / prepare-commit phases
 - **Status:** `VERIFY` | **Priority:** `P1`
 
-## P48-011 — Generate masked pre-shifted 8x8 actor assets
+## P48-011 — Generated masked pre-shifted actors
 - **Status:** `DONE` | **Priority:** `P1`
 
-## P48-012 — Replace runtime-shift drawing with masked renderer
+## P48-012 — Masked actor renderer
 - **Status:** `VERIFY` | **Priority:** `P1` | **Incident:** `INC-2026-003`
 
-## P48-013 — Move player drawing out of player module
+## P48-013 — Simulation-only player module
 - **Status:** `VERIFY` | **Priority:** `P1`
 
-## P48-014 — Cycle-budget profiling and memory budget checks
-- **Status:** `DONE` | **Priority:** `P2` | **Incident:** `INC-2026-006`
+## P48-014 — Cycle/memory budget profiling
+- **Status:** `DONE` | **Priority:** `P2`
 
-## P48-015 — Persistent incident memory and changelog discipline
+## P48-015 — Persistent incidents/changelog discipline
 - **Status:** `DONE` | **Priority:** `P1`
 
-## P48-016 — Support explicit canonical opacity masks for future actor art
+## P48-016 — Explicit canonical opacity masks for future actor art
 - **Status:** `READY` | **Priority:** `P2`
 
-## P48-017 — Publish latest compiled and verified TAP from GitHub
-- **Status:** `DONE` | **Priority:** `P1` | **Incident:** `INC-2026-007`
+## P48-017 — Publish latest verified TAP from GitHub
+- **Status:** `DONE` | **Priority:** `P1`
 
 ---
 
 ## Adding tasks
 
-Use the next unused ID and include at minimum:
-
-```text
-## P48-XXX — Title
-- Status
-- Priority
-- Files
-- Depends on
-- Related incident/ADR if applicable
-
-Problem / goal
-Resolution plan
-Acceptance / verification evidence
-```
-
-Never leave important work only in chat or commit messages.
+Use the next unused `P48-###` ID. Include status, priority, files/dependencies, related incident/reference, problem, plan and acceptance evidence. Never leave important development intent only in chat.
