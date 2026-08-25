@@ -14,6 +14,7 @@
         INCLUDE "../src/sprites.asm"
         INCLUDE "../src/generated/pac_shifted.asm"
         INCLUDE "../src/maze.asm"
+        INCLUDE "../src/pellets.asm"
         INCLUDE "../src/player.asm"
         INCLUDE "../src/render.asm"
 
@@ -213,6 +214,79 @@ Test_Start:
         CP 4
         LD A, 37
         JP NZ, Test_Fail
+
+; ------------------------------------------------------------
+; P48-025 pellet consumption.
+; The previous one-pixel move keeps Pac's centre inside maze cell (1,1), so
+; the spawn pellet must already have changed to Maze_CellEmpty.
+; ------------------------------------------------------------
+        LD HL, Maze_Map + 29            ; row 1, x=1
+        LD A, (HL)
+        CP Maze_CellEmpty
+        LD A, 38
+        JP NZ, Test_Fail
+
+; Crossing the centre threshold into maze cell (2,1) must consume that pellet
+; regardless of direction-anchor asymmetry. x=27 -> 28 makes centre x=32.
+        LD HL, Maze_Map + 30            ; row 1, x=2
+        LD (HL), Maze_CellPellet
+        LD A, 27
+        LD (Pac_PixelX), A
+        LD A, 24
+        LD (Pac_PixelY), A
+        LD A, 4
+        LD (Pac_Dir), A
+        XOR A
+        LD (Pac_ReqDir), A
+        CALL Player_Update
+
+        LD A, (Pac_PixelX)
+        CP 28
+        LD A, 39
+        JP NZ, Test_Fail
+        LD HL, Maze_Map + 30
+        LD A, (HL)
+        CP Maze_CellEmpty
+        LD A, 53
+        JP NZ, Test_Fail
+
+; ------------------------------------------------------------
+; P48-024 per-pixel leading-edge collision regression.
+; Force an orthogonal one-pixel drift (y=25) and move right toward the wall at
+; maze x=13. The previous alignment-only implementation would skip collision
+; while misaligned and advance to x=113; the new box-edge test must stop at
+; x=112 and clear Pac_Dir.
+; ------------------------------------------------------------
+        LD A, 112
+        LD (Pac_PixelX), A
+        LD A, 25
+        LD (Pac_PixelY), A
+        LD A, 4
+        LD (Pac_Dir), A
+        LD (Pac_FacingDir), A
+        XOR A
+        LD (Pac_ReqDir), A
+        CALL Player_Update
+
+        LD A, (Pac_PixelX)
+        CP 112
+        LD A, 54
+        JP NZ, Test_Fail
+        LD A, (Pac_PixelY)
+        CP 25
+        LD A, 55
+        JP NZ, Test_Fail
+        LD A, (Pac_Dir)
+        OR A
+        LD A, 56
+        JP NZ, Test_Fail
+
+; Restore mutable pellet cells so later renderer tests retain their canonical
+; expected background.
+        LD HL, Maze_Map + 29
+        LD (HL), Maze_CellPellet
+        INC HL                           ; Maze_Map + 30
+        LD (HL), Maze_CellPellet
 
 ; ------------------------------------------------------------
 ; Render_Prepare dirty-cell coverage using the real Z80 routines.
