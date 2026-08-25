@@ -61,6 +61,40 @@ jobs:
           wc -c build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap"
           cat build/perf_results.txt
 
+      - name: Prepare verified release package
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          mkdir -p release
+          cp build/pac48.tap release/pac48-latest.tap
+          cp "build/pac48-${VERSION}.tap" "release/pac48-${VERSION}.tap"
+          (
+            cd release
+            sha256sum pac48-latest.tap "pac48-${VERSION}.tap" > SHA256SUMS.txt
+          )
+          {
+            echo "PAC48 latest verified build"
+            echo
+            echo "Version: ${VERSION}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo "Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+            echo "Target: ZX Spectrum 48K"
+            echo
+            echo "Verification completed before publication:"
+            echo "- deterministic structural and architecture checks"
+            echo "- renderer reference-model tests"
+            echo "- sjasmplus assembly with zero errors/warnings"
+            echo "- headless 48K Z80 runtime harness"
+            echo "- contention-aware Render_Commit timing measurements"
+            echo "- TAP generation"
+            echo
+            echo "Render_Commit timing evidence:"
+            sed 's/^/- /' build/perf_results.txt
+            echo
+            echo "Use pac48-latest.tap for the stable latest-build filename."
+          } > release/BUILD-INFO.txt
+
       - name: Upload verified build and evidence artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -76,3 +110,73 @@ jobs:
             build/runtime_harness.z80
             build/perf_results.txt
             build/perf_*_measure.log
+
+      - name: Upload release package for publication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pac48-release-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 1
+          path: release/
+
+  publish-latest:
+    name: Publish latest verified TAP
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout version metadata
+        uses: actions/checkout@v4
+
+      - name: Download verified release package
+        uses: actions/download-artifact@v4
+        with:
+          name: pac48-release-${{ github.sha }}
+          path: release
+
+      - name: Verify release package integrity
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          test -s release/pac48-latest.tap
+          test -s "release/pac48-${VERSION}.tap"
+          test -s release/SHA256SUMS.txt
+          test -s release/BUILD-INFO.txt
+          (
+            cd release
+            sha256sum --check SHA256SUMS.txt
+          )
+
+      - name: Publish immutable per-commit release and mark Latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          SHORT_SHA="${GITHUB_SHA:0:12}"
+          TAG="build-${SHORT_SHA}"
+
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; leaving verified release unchanged."
+            exit 0
+          fi
+
+          gh release create "$TAG" \
+            release/pac48-latest.tap \
+            "release/pac48-${VERSION}.tap" \
+            release/SHA256SUMS.txt \
+            release/BUILD-INFO.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "PAC48 latest verified build (${VERSION})" \
+            --notes-file release/BUILD-INFO.txt \
+            --latest
+
+          gh release view "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isLatest,url,assets
