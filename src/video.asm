@@ -1,3 +1,8 @@
+; ==========================================
+; PAC48 - video.asm
+; Low-level ZX Spectrum screen primitives
+; ==========================================
+
 Video_Clear:
     ; azzera bitmap (6144 byte)
     LD HL, SCREEN_ADDR
@@ -16,7 +21,6 @@ Video_Clear:
 
     ; imposta bordo nero
     OUT (PORT_ULA), A
-
     RET
 
 Video_BeginFrame:
@@ -28,17 +32,39 @@ Video_EndFrame:
     RET
 
 ; ------------------------------------------
-; Disegna sprite 8x8 a coordinate pixel.
-; In: D=x pixel, E=y pixel, HL=sprite ptr, A=attr
-Video_DrawSpritePx:
-    PUSH AF
+; Build a 192-entry lookup table of Spectrum bitmap scanline addresses.
+; Call once during startup before Render_Commit is used.
+Video_InitLineTable:
+    LD DE, Video_LineAddrTable
+    LD C, 0
+.loop:
+    LD A, C
+    PUSH BC
     PUSH DE
-    PUSH HL
-    LD C, D                 ; C = x pixel
-    LD B, E                 ; B = y pixel
+    CALL Video_CalcLineAddress
+    POP DE
 
-    ; HL = $4000 + ((y&$C0)<<5) + ((y&7)<<8) + ((y&$38)<<2) + x/8
-    LD A, B
+    LD A, L
+    LD (DE), A
+    INC DE
+    LD A, H
+    LD (DE), A
+    INC DE
+
+    POP BC
+    INC C
+    LD A, C
+    CP 192
+    JR NZ, .loop
+    RET
+
+; In: A=y pixel 0..191
+; Out: HL=address of byte 0 for that Spectrum bitmap scanline
+; Clobbers: AF, B, HL
+Video_CalcLineAddress:
+    LD B, A
+
+    ; $4000 + ((y & $C0) << 5) + ((y & 7) << 8) + ((y & $38) << 2)
     AND $C0
     RRCA
     RRCA
@@ -56,115 +82,50 @@ Video_DrawSpritePx:
     ADD A, A
     ADD A, A
     LD L, A
-
-    LD A, C
-    SRL A
-    SRL A
-    SRL A
-    ADD A, L
-    LD L, A
-
-    LD A, C
-    AND 7
-    LD C, A                 ; C = shift 0..7
-
-    POP DE                  ; DE -> sprite
-    LD B, 8
-.line_loop_px:
-    LD A, C
-    OR A
-    JR Z, .aligned_px
-
-    PUSH BC
-    LD B, C
-    LD A, (DE)
-.shift_right:
-    SRL A
-    DJNZ .shift_right
-    LD (HL), A
-    POP BC
-
-    PUSH BC
-    LD A, 8
-    SUB C
-    LD B, A
-    LD A, (DE)
-.shift_left:
-    SLA A
-    DJNZ .shift_left
-    INC L
-    LD (HL), A
-    DEC L
-    POP BC
-    JR .next_px
-
-.aligned_px:
-    LD A, (DE)
-    LD (HL), A
-
-.next_px:
-    INC DE
-    CALL Video_NextScanline
-    DJNZ .line_loop_px
-
-    POP DE                  ; coordinate pixel originali
-    POP AF                  ; attr
-    CALL Video_DrawTileForPixel
     RET
 
-; Avanza HL alla scanline ZX Spectrum successiva.
-Video_NextScanline:
-    INC H
-    LD A, H
-    AND 7
-    RET NZ
-    LD A, L
-    ADD A, 32
+; In: A=y pixel 0..191
+; Out: HL=address of byte 0 for the scanline
+; Preserves: DE (important for masked sprite source pointer)
+; Clobbers: AF, HL
+Video_GetLineAddress:
+    PUSH DE
     LD L, A
-    RET C
-    LD A, H
-    SUB 8
-    LD H, A
-    RET
-
-; In: D=x pixel, E=y pixel, A=attr
-Video_DrawTileForPixel:
-    PUSH AF
-    LD A, D
-    SRL A
-    SRL A
-    SRL A
-    LD D, A
-    LD A, E
-    SRL A
-    SRL A
-    SRL A
-    LD E, A
-    POP AF
-    CALL Video_DrawTile
+    LD H, 0
+    ADD HL, HL
+    LD DE, Video_LineAddrTable
+    ADD HL, DE
+    LD E, (HL)
+    INC HL
+    LD D, (HL)
+    EX DE, HL
+    POP DE
     RET
 
 ; ------------------------------------------
-; Disegna sprite 8x8 allineato a cella
-; In: D=x, E=y, HL=sprite ptr, A=attr
+; Draw an 8x8 cell-aligned bitmap and its attribute.
+; Used for persistent maze/background rendering, not moving actors.
+;
+; In: D=x cell, E=y cell, HL=sprite pointer, A=attribute
+; Preserves caller DE.
 Video_DrawSprite:
-    PUSH AF                 ; salva attr
-    PUSH DE                 ; salva coordinate mappa
-    PUSH HL                 ; salva sprite ptr
-    LD C, D                 ; C = x cella
-    LD B, E                 ; B = y cella
+    PUSH AF
+    PUSH DE
+    PUSH HL
+    LD C, D
+    LD B, E
 
-    ; base bitmap per tile 8x8:
+    ; base bitmap for aligned 8x8 tile:
     ; $4000 + (y&24)*256 + (y&7)*32 + x
     LD A, B
     AND 7
     LD H, 0
     LD L, A
-    ADD HL, HL              ; *2
-    ADD HL, HL              ; *4
-    ADD HL, HL              ; *8
-    ADD HL, HL              ; *16
-    ADD HL, HL              ; *32
+    ADD HL, HL
+    ADD HL, HL
+    ADD HL, HL
+    ADD HL, HL
+    ADD HL, HL
 
     LD A, B
     AND 24
@@ -173,46 +134,52 @@ Video_DrawSprite:
     ADD A, SCREEN_ADDR / 256
     LD H, A
 
-    ; aggiunge x
     LD A, L
     ADD A, C
     LD L, A
 
-    POP DE                  ; DE -> sprite
-    LD B, 8                 ; 8 righe
+    POP DE                  ; DE -> sprite source
+    LD B, 8
 .line_loop:
     LD A, (DE)
     LD (HL), A
     INC DE
-    INC H                   ; prossima scanline dentro la cella: +256
+    INC H
     DJNZ .line_loop
 
-    POP DE                  ; ripristina coordinate
-    POP AF                  ; attr
-    CALL Video_DrawTile     ; scrive attributo
+    POP DE                  ; original cell coordinates
+    POP AF                  ; attribute
+    CALL Video_DrawTile
     RET
 
+; ------------------------------------------
+; Write one Spectrum attribute cell.
+;
+; In: D=x cell, E=y cell, A=attribute
+; Preserves: DE
+; Clobbers: AF, B, HL
 Video_DrawTile:
-    ; D=x, E=y, A=attr
-    LD B, A              ; salva attr
+    PUSH DE
+    LD B, A
 
     ; offset = y*32 + x
     LD A, E
     LD L, A
     LD H, 0
-    ADD HL, HL           ; *2
-    ADD HL, HL           ; *4
-    ADD HL, HL           ; *8
-    ADD HL, HL           ; *16
-    ADD HL, HL           ; *32
+    ADD HL, HL
+    ADD HL, HL
+    ADD HL, HL
+    ADD HL, HL
+    ADD HL, HL
 
     LD A, D
     LD E, A
     LD D, 0
-    ADD HL, DE           ; HL = offset
+    ADD HL, DE
 
     LD DE, ATTR_ADDR
-    ADD HL, DE           ; HL = indirizzo attributo
-
+    ADD HL, DE
     LD (HL), B
+
+    POP DE
     RET
