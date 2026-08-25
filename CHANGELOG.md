@@ -17,6 +17,7 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 - Build-time `tools/gen_shifted_sprites.py` generator producing eight horizontal phases and masks for every player animation frame.
 - Deterministic architecture, maze, generated-asset, memory-budget and renderer checks.
 - Headless 48K Z80 runtime harness.
+- Dedicated headless Z80 control-semantics harness, including the owner-video diagonal dead-end regression.
 - Runtime visual-baseline guards for representative maze wall/pellet attributes and wall bitmap bytes.
 - Sixteen topology-selected 8x8 wall-boundary bitmap variants for thin maze outlines.
 - `src/pellets.asm` with persistent normal-pellet consumption.
@@ -27,18 +28,18 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 - GitHub Actions verification using pinned sjasmplus 1.23.1 and SkoolKit 10.1.
 - Automatic per-commit GitHub Releases for verified `main` builds, including stable `pac48-latest.tap`, versioned TAP, checksums and build metadata.
 - Persistent incident registry, V0-V5 verification protocol, rendering ADR and structured AI-agent TODO workflow.
-- Kempston FIRE can now select Kempston control and start the game directly from the control-selection menu (`P48-029`).
-- `src/hud.asm` 3x5 minifont build stamp rendered once in the free top gameplay band (`P48-030`).
+- Kempston FIRE can select Kempston control and start the game directly from the control-selection menu (`P48-029`).
 - Generated `src/generated/build_info.asm` containing the canonical menu title, screenshot-visible build label, version text and exact seven-character Git build ID.
-- `tools/check_build_identity.py` guards VERSION single-source behavior, build-label format/centering, startup stamp wiring and Kempston FIRE menu shortcut.
-- GitHub Releases now include an immutable/cache-safe version+build TAP name such as `pac48-0.3.5-beta-b91E4FCD.tap` in addition to the convenience `pac48-latest.tap`.
+- `tools/check_build_identity.py` guards VERSION single-source behavior, build-label format/centering, correct ROM glyph base, startup stamp wiring and Kempston FIRE menu shortcut.
+- GitHub Releases include an immutable/cache-safe version+build TAP name in addition to the convenience `pac48-latest.tap`.
 
 ### Changed
 
-- Semantic version advanced to `0.3.5-beta`.
-- `VERSION` is now the source for the generated menu title and versioned TAP names; `src/menu.asm` no longer hardcodes a version string (`P48-007`).
+- Semantic version advanced through `0.3.5-beta`, `0.3.6-beta`, and now `0.3.7-beta` as user-visible testing fixes landed.
+- `VERSION` is the source for generated menu title and versioned TAP names; `src/menu.asm` no longer hardcodes a version string (`P48-007`).
 - Main loop commits prepared rendering immediately after `HALT`, then performs input/game update/render preparation outside the short screen-write phase.
 - Startup draws the build/version stamp after `Video_Clear` + `Video_InitLineTable` and before the maze; the maze starts at pixel y=16 so the stamp does not overlap gameplay.
+- Build stamp uses the ZX Spectrum ROM/system 8x8 font rather than the rejected custom 3x5 mini-font (`P48-030`).
 - Maze is drawn once at startup instead of being redrawn in full every gameplay frame.
 - Dirty-cell restoration performs one bitmap+attribute cell draw instead of redundantly writing the attribute twice.
 - Player module owns simulation only; raw screen drawing is owned by the renderer.
@@ -47,12 +48,14 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 - Normal pellet art is a small 2x2 dot.
 - Empty and pellet walkable cells retain yellow ink on black paper so the current yellow player remains visible without actor attribute writes.
 - `Maze_CanMove` and wall-topology lookup share the canonical maze cell source.
-- Buffered turns remain grid-based; a more arcade-like queued-turn model is now tracked under `P48-028` / `INC-2026-012`.
-- Build pipeline generates build identity plus sprite assets, runs deterministic checks, assembles, executes Z80 runtime tests, profiles timing, creates generic/versioned/version+build TAP files and simulates loading the resulting TAP.
+- Input now preserves all physically held cardinal directions in `Input_HeldMask`; direction selection uses the travel axis to prioritize a requested perpendicular turn without throwing away fallback input.
+- Holding only the current travel direction explicitly replaces stale queued intent instead of leaving an old turn buffered indefinitely.
+- 180-degree reversal remains immediate; 90-degree turns remain legal-opening/grid constrained.
+- Build pipeline generates build identity plus sprite assets, runs deterministic checks, assembles, executes control/runtime Z80 tests, profiles timing, creates generic/versioned/version+build TAP files and simulates loading the resulting TAP.
 - Renderer chooses animation direction from persistent facing state rather than defaulting to right when movement stops.
 - Obsolete handwritten actor phase tables were removed; generated phase tables are authoritative.
 - Documentation-only GitHub pushes do not create redundant binary releases.
-- Manual V3 diagnosis now prefers the version+build filename and visible `V<version> B<build>` screen stamp when cache ambiguity is possible (`INC-2026-010`).
+- Manual V3 diagnosis prefers the version+build filename and visible `V<version> B<build>` screen stamp when cache ambiguity is possible (`INC-2026-010`).
 
 ### Fixed
 
@@ -63,50 +66,57 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 - Replaced the destructive runtime-shift actor path and removed full-maze redraw from the normal frame path (`INC-2026-003`).
 - Prevented the stopped player from visually snapping to the right-facing animation when blocked.
 - Hardened continuation collision by validating the advancing edge on every pixel step (`INC-2026-009`, `P48-024`).
-- Normal pellets now disappear persistently when Pac traverses them (`P48-025`).
+- Normal pellets disappear persistently when Pac traverses them (`P48-025`).
 - Replaced the performance profiler's raw→snapshot→reload measurement path with deterministic direct-raw execution (`INC-2026-006`).
 - Fixed GitHub Release post-publication verification after an unsupported CLI JSON field was used (`INC-2026-007`).
+- Fixed unreadable ROM build stamp: the HUD subtracts ASCII 32 before glyph indexing, so printable glyph data must start at `$3D00`, not `$3C00` (`INC-2026-013`, `P48-030`).
+- Fixed a diagonal dead-end stall visible in owner video: if the preferred perpendicular direction is blocked but a legal opposite direction remains physically held, Pac now reverses and moves in the same frame instead of stopping (`INC-2026-014`, `P48-028`).
+- Fixed stale queued-turn persistence when the player returns to holding only the current travel direction (`INC-2026-012`, `P48-028`).
 
 ### Corrected verification record
 
-- The previously reported "new visual regression" after collision/pellet integration was a false diagnosis caused by loading a stale/cached TAP (`INC-2026-010`).
+- The previously reported visual regression after collision/pellet integration was a false diagnosis caused by loading a stale/cached TAP (`INC-2026-010`).
 - Owner V3 video of the correct gameplay build shows intact maze graphics, fluid Pac motion and pellets disappearing during traversal.
 - The temporary rollback performed after the false report was reversed; collision and pellet code remain the active baseline.
+- The 0.3.6 owner video established that remaining control sluggishness was semantic rather than renderer/frame-rate related and exposed a reproducible dead-end diagonal stall now covered by the control harness.
 
 ### Current verification
 
-Current code build verified by GitHub Actions run `32805223975`, commit `91e4fcdb944972cb38476f1e1e21ff6d613df4c3`:
+Current binary release verified by GitHub Actions run `32807389635`, source commit `8077948ded9535cd1269a816ec304211504ed9fb`:
 
-- version: **0.3.5-beta**;
-- build ID: **91E4FCD**;
-- generated on-screen stamp: **`V0.3.5 B91E4FCD`**;
+- version: **0.3.7-beta**;
+- build ID: **8077948**;
+- generated on-screen stamp: **`V0.3.7 B8077948`**;
+- build stamp printable ROM base: **`$3D00`**;
 - canonical build: **PASS**;
 - build-identity checks: **PASS**;
 - sjasmplus assembly: **0 errors / 0 warnings**;
-- headless 48K Z80 runtime harness: **PASS**, including collision and pellet regressions;
+- headless Z80 control harness: **PASS**, including stale-turn cancellation, immediate reversal and exact diagonal dead-end fallback;
+- headless 48K Z80 runtime harness: **PASS**;
 - renderer reference model: **PASS**;
 - fresh 48K tape simulation reaches **PC=32768 ($8000)**;
 - `Render_Commit`: **4341 / 5497 / 9184 T-states** for dirty1 / dirty2 / dirty4;
-- BIN size: **8823 bytes** with **19849 bytes** conservative upper-RAM headroom;
-- TAP size: **8903 bytes**;
+- BIN size: **8906 bytes** with **19766 bytes** conservative upper-RAM headroom;
+- TAP size: **8986 bytes**;
 - Release publication: **PASS**;
-- release tag: `build-91e4fcdb9449`;
-- preferred manual-test asset: `pac48-0.3.5-beta-b91E4FCD.tap`;
-- TAP SHA-256: **d792d7765591dcbf435faf2d718ec200c35dcd7fffe99c01305ce5743025c12b**.
+- release tag: `build-8077948ded95`;
+- preferred manual-test asset: `pac48-0.3.7-beta-b8077948.tap`;
+- TAP SHA-256: **ed2bb9672db57f93f273957ffc40620ad2dec103a55f737958cee166d6990fbd**.
 
-### V3 evidence
+### V3 evidence / pending owner verification
 
 - `P48-018`: owner accepted the recovered visual baseline as a major improvement.
 - `P48-025`: owner video visibly confirms normal pellets disappear while traversed.
-- `P48-024`: current owner video does not visibly reproduce wall penetration, but explicit targeted confirmation remains desirable before closing the incident.
-- `P48-029`: Kempston FIRE menu-start behavior is compiled/released and awaits owner V3 confirmation.
-- `P48-030`: on-screen mini version/build stamp is compiled/released and awaits owner confirmation that it is readable and unobtrusive in the actual emulator/device view.
+- `P48-024`: owner videos have not visibly reproduced wall penetration, but explicit targeted confirmation remains desirable before closing the incident.
+- `P48-029`: Kempston FIRE menu-start behavior is compiled/released and awaits explicit owner V3 confirmation.
+- `P48-028`: 0.3.7 deterministic control tests pass; owner must confirm the actual joystick now feels immediate and no longer stalls at corridor ends.
+- `P48-030`: 0.3.7 uses the corrected `$3D00` printable ROM glyph base; owner must confirm the stamp is actually readable in the emulator/device view.
 
 ### Known limitations / next work
 
 - Current maze has **18 unreachable pellet cells** in three isolated components (`INC-2026-011`, `P48-027`).
-- Current junction input can feel stuck because simultaneous directions are collapsed with fixed priority and turns require exact node alignment (`INC-2026-012`, `P48-028`).
 - Current maze topology is still the earlier generic layout; `P48-019` follows the connectivity correction.
+- A green control harness does not close `P48-028`; joystick feel remains a manual V3 criterion.
 - Pellet count, score, level completion, full score HUD, power pellets, ghost house, enemies, lives, bonus presentation and sound remain future work.
 - Current renderer prepares/draws the player only; actor descriptor/dirty-cell support still needs extension to enemies.
 - Current generated masks infer transparency from zero bits; future sprites needing opaque zero-valued pixels require explicit canonical mask support (`P48-016`).
