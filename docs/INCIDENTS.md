@@ -4,7 +4,7 @@ This file is the persistent engineering memory for bugs, regressions, failed app
 
 It is **append-oriented**. Resolved incidents remain in the file permanently.
 
-For planned work use `docs/TODO.md`. For user-visible/project evolution use `CHANGELOG.md`. For architecture decisions use `docs/adr/`.
+For planned work use `docs/TODO.md`. For change history use `CHANGELOG.md`. For architecture decisions use `docs/adr/`. Verification layers and closure requirements are defined in `docs/TESTING.md`.
 
 ## Mandatory agent rules
 
@@ -81,7 +81,7 @@ Any public assembly routine whose caller may reuse coordinates must document inp
 
 ### Verification evidence
 
-Code fix implemented on 2026-08-25. Assembly and emulator/hardware visual verification still required before status can become `CLOSED`.
+Code fix implemented on 2026-08-25. V2 canonical build and V3 visual maze/pellet test remain required. The current assistant execution environment does not contain `sjasmplus` or `bin2tap.py`, so V2 could not be run here.
 
 ---
 
@@ -116,7 +116,7 @@ Hardware input mappings must be documented beside the port/row access and manual
 
 ### Verification evidence
 
-Code fix implemented on 2026-08-25. Emulator or compatible-hardware control verification remains required.
+Code fix implemented on 2026-08-25. V2 build and the Sinclair sections of V3 in `docs/TESTING.md` remain required. The current assistant execution environment does not contain `sjasmplus` or `bin2tap.py`.
 
 ---
 
@@ -141,7 +141,7 @@ The initial incremental prototype mixed gameplay, background restoration, sprite
 
 ### Corrective action
 
-The engine now migrates to the accepted ADR 0001 architecture:
+The engine now implements the ADR 0001 architecture:
 
 - initial maze draw only;
 - dedicated `render.asm`;
@@ -151,18 +151,21 @@ The engine now migrates to the accepted ADR 0001 architecture:
 - 192-entry scanline address LUT;
 - dirty-cell restoration instead of full-maze redraw;
 - player module no longer owns raw screen writes;
-- moving actors do not rewrite attributes in the hot path.
+- moving actors do not rewrite attributes in the hot path;
+- persistent facing direction is separate from active movement direction.
 
 ### Regression guard
 
 - `Maze_Draw` must not return to the normal gameplay frame path.
 - normal actor rendering must not reintroduce per-row runtime shifting.
+- player/enemy simulation modules must not regain raw screen ownership.
 - any future renderer rewrite requires cycle-aware profiling and an ADR when it changes the core strategy.
 - `tools/build.sh` generates and structurally validates sprite assets before assembly.
+- `docs/TESTING.md` defines phase-sweep, dirty-restore, turning, timing, and incident-closure checks.
 
 ### Verification evidence
 
-Architecture and code migration implemented on 2026-08-25. Required before closure: successful assembly/TAP build, emulator smoke test, visual dirty-restore test, and cycle-aware timing measurements for common/worst actor counts.
+Architecture/code migration implemented on 2026-08-25. A local Python syntax/math smoke of the sprite-generation approach passed. Full V2 assembly/TAP could not run because `sjasmplus` and `bin2tap.py` are absent in the current execution environment. V3 emulator rendering tests and V4 cycle-aware timing remain required before closure.
 
 ---
 
