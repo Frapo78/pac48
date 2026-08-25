@@ -101,6 +101,48 @@ Test_Start:
         JP NZ, Test_Fail
 
 ; ------------------------------------------------------------
+; P48-018 visual-baseline guard.
+; Draw the real maze and verify that maze-to-screen translation preserves
+; the intended attribute value and that the outer wall uses thin blue bitmap
+; edges on black PAPER instead of a solid colored attribute rectangle.
+; ------------------------------------------------------------
+        CALL Video_Clear
+        CALL Maze_Draw
+
+        ; maze wall (0,0) -> screen cell (2,2)
+        LD HL, ATTR_ADDR + 2*32 + 2
+        LD A, (HL)
+        CP Maze_AttrWall
+        LD A, 13
+        JP NZ, Test_Fail
+
+        ; maze pellet (1,1) -> screen cell (3,3)
+        LD HL, ATTR_ADDR + 3*32 + 3
+        LD A, (HL)
+        CP Maze_AttrPellet
+        LD A, 14
+        JP NZ, Test_Fail
+
+        ; top-left wall has top+left boundary: first scanline $FF, next $80.
+        LD A, 16
+        CALL Video_GetLineAddress
+        LD BC, 2
+        ADD HL, BC
+        LD A, (HL)
+        CP $FF
+        LD A, 15
+        JP NZ, Test_Fail
+
+        LD A, 17
+        CALL Video_GetLineAddress
+        LD BC, 2
+        ADD HL, BC
+        LD A, (HL)
+        CP $80
+        LD A, 16
+        JP NZ, Test_Fail
+
+; ------------------------------------------------------------
 ; Maze collision sanity using the real Maze_Map.
 ; ------------------------------------------------------------
         LD D, 1
