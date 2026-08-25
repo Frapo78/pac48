@@ -21,7 +21,7 @@ Read before implementation:
 - Run the canonical build for code/build changes.
 - Update changelog and incident records when applicable.
 - Code without required evidence is `VERIFY`, not `DONE`.
-- A green build is not a substitute for V3 visual verification when the task changes what the player sees.
+- A green build is not a substitute for V3 visual verification when the task changes what the player sees or how controls/collision feel.
 
 ## Status
 
@@ -41,27 +41,23 @@ Read before implementation:
 
 ## Current verified baseline — 2026-08-25
 
-Canonical GitHub Actions run `32800960272` on commit `e0e4afce51442df193eb48de18226d53a42ab703` proves the current visual-recovery code baseline:
+Canonical GitHub Actions run `32801837183` on commit `5acf77665afc5187bcd0baae03a349177ff68955` proves the current collision/pellet baseline:
 
 - V1 structural/architecture checks PASS;
 - sjasmplus 1.23.1 assembly: 0 errors / 0 warnings;
-- headless 48K Z80 runtime harness PASS, including maze attribute and wall-outline guards;
-- binary size 8279 bytes;
-- conservative upper-RAM headroom 20393 bytes;
-- TAP size 8359 bytes;
+- headless 48K Z80 runtime harness PASS, including maze visual guards, pellet mutation, and per-pixel wall-collision regression coverage;
+- binary size 8503 bytes;
+- conservative upper-RAM headroom 20169 bytes;
+- TAP size 8583 bytes;
 - fresh-48K simulated tape loading reaches `PC=32768 ($8000)`;
-- V4 `Render_Commit` timing with 48K contention:
-  - dirty1: 4341 T-states;
-  - dirty2: 5497 T-states;
-  - arbitrary dirty4: 9184 T-states;
-- all measured cases remain below the 12,000 T-state common target and 14,000 warning threshold;
-- verified release publication completes successfully.
+- V4 `Render_Commit` timing remains 4341 / 5497 / 9184 T-states for dirty1/dirty2/dirty4;
+- verified release publication completed successfully.
 
-The owner-provided V3 screenshot exposed the visual regression that initiated this milestone. The deterministic cause has now been fixed and guarded, but the corrected screen still needs a fresh owner-visible V3 screenshot before the recovery task can be declared `DONE`.
+The owner accepted the recovered visual baseline as "va molto meglio", confirmed controls respond and movement is very fluid, and then exposed two gameplay issues: occasional apparent wall penetration and pellets not being consumed. These now have dedicated tasks/tests below; fresh V3 confirmation remains required before they are `DONE`.
 
 ---
 
-# ACTIVE MILESTONE — Visual recovery toward the arcade reference
+# ACTIVE MILESTONE — Visual/gameplay recovery toward the arcade reference
 
 ## Visual target
 
@@ -83,54 +79,103 @@ The ZX Spectrum attribute model is a hard constraint. Visual similarity means pr
 
 ## Milestone order
 
-`P48-018 -> P48-019 -> P48-023 -> P48-020 -> P48-021 -> P48-022 -> resume P48-009 gameplay`
+`P48-024 -> P48-025 -> P48-019 -> P48-023 -> P48-020 -> P48-021 -> P48-022 -> resume broader P48-009 gameplay`
 
-Do not add enemies, scoring logic, sound, or broad gameplay until P48-018 and P48-019 are at least `VERIFY` with a clean V3 screenshot and P48-023 provides a repeatable visual gate.
+Do not add enemies, sound, or broad gameplay until collision/pellet V3 is clean and the topology/visual gate is established.
 
 ---
 
 ## P48-018 — Recover a clean, readable maze baseline
 
-- **Status:** `VERIFY`
+- **Status:** `DONE`
 - **Priority:** `P0`
 - **Type:** rendering correctness + visual recovery
 - **Files:** `src/maze.asm`, `src/sprites.asm`, `tests/runtime_harness.asm`, `docs/INCIDENTS.md`
-- **Depends on:** none
 - **Incident:** `INC-2026-008`
+
+Implemented and verified:
+
+- intended attributes survive maze-to-screen coordinate translation;
+- headless Z80 harness asserts representative maze attributes and wall bitmap bytes;
+- walls use black PAPER + bright-blue thin bitmap boundaries;
+- normal pellet art is a small 2x2 dot;
+- collision-map semantics were unchanged by visual recovery;
+- V1/V2/V4 passed;
+- owner V3 screenshot confirmed the large color bands/filled rectangles were gone and the result was a major visual improvement.
+
+---
+
+## P48-024 — Harden player collision at every pixel step
+
+- **Status:** `VERIFY`
+- **Priority:** `P0`
+- **Type:** gameplay correctness
+- **Files:** `src/player.asm`, `tests/runtime_harness.asm`
+- **Incident:** `INC-2026-009`
+- **Depends on:** none
 
 ### Problem
 
-The owner-provided V3 screenshot showed horizontal attribute-color bands and large solid blue/red areas instead of a readable maze. Root cause: `Maze_DrawAtOffset` received the intended attribute in `A`, then overwrote `A` while translating maze coordinates to screen coordinates, so the screen Y coordinate was passed to `Video_DrawSprite` as the Spectrum attribute.
-
-Solid-blue PAPER wall cells were also too coarse for the desired arcade-like visual language.
+The owner reported that Pac occasionally appears to pass through walls. The previous collision path only revalidated the destination tile when both pixel coordinates were 8-pixel aligned; between nodes it returned success unconditionally. Normal movement intends to preserve orthogonal alignment, but that assumption is too fragile for a collision invariant.
 
 ### Implemented
 
-1. the intended attribute survives maze-to-screen coordinate translation;
-2. the headless Z80 harness asserts exact attributes for representative wall and pellet cells through the real `Maze_Draw` path;
-3. walls use black PAPER + bright-blue INK;
-4. wall cells select one of 16 thin bitmap boundary variants from neighboring wall topology;
-5. normal pellet art is reduced to a 2x2 dot;
-6. gameplay/collision map data is unchanged;
-7. a failed first repair was caught by the new guard before release and is retained in `INC-2026-008`.
+- every one-pixel movement validates the complete 8x8 actor's leading edge;
+- two leading-edge corner samples are converted from screen pixels to maze cells and checked through `Maze_CanMove`;
+- requested turns are still grid-aligned/buffered, preserving the current responsive control feel;
+- a Z80 regression case forces a one-pixel orthogonal drift near a wall: the old alignment-only code would advance, the new code must stop and clear `Pac_Dir`.
 
 ### Acceptance
 
-- [x] no row/column coordinate is used as a Spectrum attribute by current maze drawing;
-- [x] headless harness catches the attribute-contract regression;
-- [x] wall cells use black PAPER and blue INK;
-- [x] wall bitmap is boundary/outline based rather than a filled colored rectangle;
-- [x] pellet bitmap is visibly smaller than the player;
-- [x] collision map and player movement semantics unchanged;
-- [x] V1/V2 PASS and fresh-48K TAP load reaches `$8000`;
-- [x] V4 remains within budget: 4341 / 5497 / 9184 T-states;
-- [ ] V3 screenshot shows a black playfield with blue maze lines and no large red/blue attribute bands.
+- [x] per-pixel leading-edge collision exists for all four directions;
+- [x] wall/outside remains blocked through canonical `Maze_CanMove`;
+- [x] deterministic Z80 drift regression PASS;
+- [x] normal legal movement regression PASS;
+- [x] V1/V2 PASS;
+- [x] Render_Commit V4 remains unchanged/in budget;
+- [ ] V3: owner confirms sustained play no longer crosses/enters wall geometry.
 
 ### Verification evidence
 
-- failing guard run `32800881885` correctly blocked publication on an incorrect stack-order repair (code 13);
-- corrected run `32800960272` passed build, runtime harness, performance test, TAP load, artifact checks, and release publication;
-- current BIN 8279 bytes, TAP 8359 bytes, headroom 20393 bytes.
+GitHub Actions run `32801837183`: clean assembly, runtime harness PASS, fresh-48K TAP load PASS, release publication PASS. Current BIN 8503 bytes; TAP 8583 bytes; headroom 20169 bytes.
+
+---
+
+## P48-025 — Consume normal pellets persistently
+
+- **Status:** `VERIFY`
+- **Priority:** `P1`
+- **Type:** gameplay state
+- **Files:** `src/pellets.asm`, `src/player.asm`, `src/main.asm`, test harnesses
+- **Depends on:** none
+
+### Problem
+
+Normal pellets were visual-only maze cells; no gameplay routine changed them after Pac passed over them.
+
+### Implemented
+
+- new `src/pellets.asm` owns persistent normal-pellet consumption;
+- `Pellet_ConsumeAt` changes `Maze_CellPellet` to `Maze_CellEmpty` in `Maze_Map`;
+- pickup uses the centre of the 8x8 player so entry from left/right/up/down is symmetric;
+- pellet pickup runs after every successful pixel move;
+- the spawn pellet is consumed before the initial maze draw;
+- dirty-cell restoration automatically renders consumed cells as empty without a full-maze redraw;
+- Z80 tests prove the spawn pellet and a centre-threshold target pellet mutate to `Maze_CellEmpty`.
+
+### Acceptance
+
+- [x] persistent cell state changes from pellet to empty;
+- [x] centre-based pickup is direction-anchor independent;
+- [x] dirty restoration reads the mutated map state;
+- [x] deterministic Z80 pickup regressions PASS;
+- [x] V1/V2 PASS;
+- [ ] V3: owner confirms pellets visibly disappear while traversing corridors;
+- [ ] pellet counter/score increment is intentionally deferred to a later child task.
+
+### Verification evidence
+
+GitHub Actions run `32801837183` passed the expanded runtime harness, canonical build, TAP load, V4 timing and release publication.
 
 ---
 
@@ -140,7 +185,7 @@ Solid-blue PAPER wall cells were also too coarse for the desired arcade-like vis
 - **Priority:** `P1`
 - **Type:** level/visual design
 - **Files:** `src/maze.asm`, tests/checker, documentation
-- **Depends on:** `P48-018` visual baseline acceptance
+- **Depends on:** clean V3 confirmation of `P48-024` and `P48-025`
 
 ### Goal
 
@@ -173,20 +218,9 @@ Replace the current generic 28x20 topology with a deliberate, symmetric arcade-s
 
 - **Status:** `BLOCKED`
 - **Priority:** `P1`
-- **Type:** presentation/HUD
-- **Files:** new HUD module or centralized video/text data, `src/main.asm`, memory state
 - **Depends on:** `P48-019`
 
-### Goal
-
-Create a clean top HUD resembling the reference hierarchy: score on the left, `HIGH SCORE`/best score centrally or right-aligned, without stealing maze readability.
-
-### Acceptance
-
-- [ ] HUD has dedicated screen cells outside maze playfield;
-- [ ] score/high-score labels remain stable while maze redraw/dirty restore runs;
-- [ ] no ROM printing in the gameplay hot path;
-- [ ] numeric fields can later be updated without full-screen redraw.
+Goal: clean top HUD with score and high score outside the maze playfield, no ROM printing in the hot path, independently updatable numeric fields.
 
 ---
 
@@ -194,21 +228,9 @@ Create a clean top HUD resembling the reference hierarchy: score on the left, `H
 
 - **Status:** `BLOCKED`
 - **Priority:** `P1`
-- **Type:** presentation + level state
-- **Files:** maze cell model, sprites, HUD/presentation
 - **Depends on:** `P48-019`, `P48-020`
 
-### Goal
-
-Add four larger power pellets and reserve lower-screen presentation for remaining lives/bonus icons, matching the classic visual hierarchy without implementing frightened-mode behavior yet.
-
-### Acceptance
-
-- [ ] explicit power-pellet cell type/state;
-- [ ] exactly four initial power-pellet positions;
-- [ ] power pellet visually distinct from normal pellet;
-- [ ] life/bonus strip does not overlap gameplay cells;
-- [ ] dirty restoration preserves pellet/power-pellet state correctly.
+Goal: four distinct power pellets plus reserved life/bonus presentation without implementing frightened mode yet.
 
 ---
 
@@ -216,20 +238,9 @@ Add four larger power pellets and reserve lower-screen presentation for remainin
 
 - **Status:** `BLOCKED`
 - **Priority:** `P1`
-- **Type:** actor staging + Spectrum color policy
-- **Files:** maze/actor/render architecture, sprite assets
 - **Depends on:** `P48-019`, `P48-016`
 
-### Goal
-
-Create the central house/staging geometry and define how future ghosts get distinct readable colors under 8x8 attribute-cell limitations.
-
-### Acceptance
-
-- [ ] ghost house has entrance/exit semantics separate from normal walls;
-- [ ] future ghost spawn slots are defined;
-- [ ] actor color policy is documented and tested for attribute clash;
-- [ ] no renderer rewrite is introduced without profiling/ADR evidence.
+Goal: central ghost staging/exit semantics and a documented Spectrum-safe actor color policy.
 
 ---
 
@@ -237,27 +248,18 @@ Create the central house/staging geometry and define how future ghosts get disti
 
 - **Status:** `READY`
 - **Priority:** `P1`
-- **Type:** testing/regression prevention
-- **Files:** `docs/TESTING.md`, runtime/emulator tooling where deterministic, incident registry
 - **Depends on:** `P48-018`
 
 ### Goal
-
 Prevent another build from being considered healthy while the actual game screen is visibly broken.
-
-### Plan
-
-- keep deterministic Z80 assertions for key bitmap/attribute cells in CI;
-- define a canonical initial-frame V3 screenshot checklist;
-- record emulator/machine mode and commit for accepted screenshots;
-- automate screenshot comparison only if it can be made deterministic and non-GUI; do not reintroduce fragile X11 automation (`INC-2026-005`).
 
 ### Acceptance
 
 - [x] CI validates representative wall/pellet attributes and wall bitmap bytes;
+- [x] an owner-visible V3 screenshot has established the first accepted recovered baseline;
 - [ ] `docs/TESTING.md` has an explicit initial-screen visual gate;
-- [ ] accepted V3 screenshot evidence is recorded with commit/ref;
-- [ ] a visibly banded/filled/corrupted maze cannot be marked release-quality solely because assembly passes.
+- [ ] accepted screenshot evidence format (emulator/machine/commit) is documented;
+- [ ] a visibly corrupted maze cannot be marked release-quality solely because assembly passes.
 
 ---
 
@@ -265,19 +267,15 @@ Prevent another build from being considered healthy while the actual game screen
 
 ## P48-001 — Preserve maze coordinates across attribute drawing
 - **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-001`
-- V1/V2 PASS; V3 maze/pellet restoration still required.
 
 ## P48-002 — Correct Sinclair 1 and Sinclair 2 directions
 - **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-002`
-- V1/V2 PASS; V3 both Sinclair modes still required.
 
 ## P48-003 — Remove full-maze redraw from gameplay frames
 - **Status:** `VERIFY` | **Priority:** `P1` | **Incident:** `INC-2026-003`
-- Dirty restoration and timing implemented; V3 trail/background verification remains.
 
 ## P48-004 — Stabilize attribute ownership for moving actors
 - **Status:** `VERIFY` | **Priority:** `P1`
-- Moving actors do not write attributes; V3 clash/trail verification remains.
 
 ## P48-005 — Synchronize documentation with pixel movement
 - **Status:** `DONE` | **Priority:** `P1`
@@ -288,41 +286,35 @@ Prevent another build from being considered healthy while the actual game screen
 
 ## P48-007 — Make VERSION the single release-version source
 - **Status:** `READY` | **Priority:** `P2`
-- Generate menu version from `VERSION`.
 
 ## P48-008 — Establish repeatable verification baseline
 - **Status:** `VERIFY` | **Priority:** `P2`
-- V1/V2/V4 automated; V3 visual/control suite remains.
 
 ## P48-009 — Implement first complete gameplay loop
 - **Status:** `BLOCKED` | **Priority:** `P2`
-- Blocked by visual recovery. Later children: pellet consumption, score, level completion, lives, enemies, collisions, game over, energizers, sound.
+- Normal pellet consumption has been extracted and implemented as `P48-025`. Remaining children include pellet count, score, level completion, lives, enemies, collisions, game over, energizers and sound.
 
 ## P48-010 — Dedicated render module and prepare/commit phases
 - **Status:** `VERIFY` | **Priority:** `P1`
-- V1/V2/V4 PASS; V3 visual runtime confirmation remains.
 
 ## P48-011 — Generate masked pre-shifted 8x8 actor assets
 - **Status:** `DONE` | **Priority:** `P1`
 
 ## P48-012 — Replace runtime-shift drawing with masked renderer
 - **Status:** `VERIFY` | **Priority:** `P1` | **Incident:** `INC-2026-003`
-- V1/V2/V4 PASS; V3 all phases/background preservation remains.
 
 ## P48-013 — Move player drawing out of player module
 - **Status:** `VERIFY` | **Priority:** `P1`
-- Simulation ownership complete; V3 direction/stopping behavior remains.
 
 ## P48-014 — Cycle-budget profiling and memory budget checks
 - **Status:** `DONE` | **Priority:** `P2` | **Incident:** `INC-2026-006`
-- Current visual-recovery baseline: 8279-byte BIN, 20393-byte headroom, 4341/5497/9184 T-states. Re-run when actor count or restore complexity changes materially.
+- Current baseline: 8503-byte BIN, 20169-byte headroom, 4341/5497/9184 Render_Commit T-states.
 
 ## P48-015 — Persistent incident memory and changelog discipline
 - **Status:** `DONE` | **Priority:** `P1`
 
 ## P48-016 — Support explicit canonical opacity masks for future actor art
 - **Status:** `READY` | **Priority:** `P2`
-- Required before actors needing opaque zero-valued pixels.
 
 ## P48-017 — Publish latest compiled and verified TAP from GitHub
 - **Status:** `DONE` | **Priority:** `P1` | **Incident:** `INC-2026-007`
