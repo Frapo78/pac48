@@ -31,10 +31,16 @@ if ! sjasmplus --raw="$HARNESS_BIN" tests/perf_harness.asm 2>&1 | tee "$ASSEMBLE
   exit 1
 fi
 
-# Performance evidence is invalid if the harness assembly emitted warnings:
-# a previous ORG/raw-file warning produced plausible but false equal timings.
-if grep -qi 'warning' "$ASSEMBLE_LOG"; then
-  echo "ERROR: performance harness assembly emitted warning(s); refusing timing evidence" >&2
+# Performance evidence is invalid if the harness assembly emitted warnings.
+# Parse sjasmplus's summary count rather than matching the word "warning",
+# because the clean summary itself contains "warnings: 0".
+WARNING_COUNT="$(sed -n 's/.*warnings: \([0-9][0-9]*\).*/\1/p' "$ASSEMBLE_LOG" | tail -n1)"
+if [[ ! "$WARNING_COUNT" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: could not parse sjasmplus warning count" >&2
+  exit 1
+fi
+if (( WARNING_COUNT != 0 )); then
+  echo "ERROR: performance harness assembly emitted $WARNING_COUNT warning(s); refusing timing evidence" >&2
   exit 1
 fi
 
