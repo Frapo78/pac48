@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Deterministic structural checks for PAC48.
+"""Deterministic structural and architecture checks for PAC48.
 
-These checks are intentionally emulator-independent. They catch repository and
-asset regressions before assembly/runtime verification.
+These checks are intentionally emulator-independent. They catch repository,
+asset, and known-architecture regressions before assembly/runtime verification.
 """
 
 from __future__ import annotations
@@ -32,9 +32,8 @@ def parse_defb_values(payload: str) -> list[int]:
     values: list[int] = []
     for token in payload.split(","):
         token = token.strip()
-        if not token:
-            continue
-        values.append(int(token, 0))
+        if token:
+            values.append(int(token, 0))
     return values
 
 
@@ -154,6 +153,67 @@ def check_generated_sprites(path: pathlib.Path) -> None:
         check_pointer_table(path, text, direction)
 
 
+def code_without_comments(text: str) -> str:
+    return "\n".join(line.split(";", 1)[0] for line in text.splitlines())
+
+
+def check_architecture(source_root: pathlib.Path) -> None:
+    main_path = source_root / "main.asm"
+    video_path = source_root / "video.asm"
+    player_path = source_root / "player.asm"
+    sprites_path = source_root / "sprites.asm"
+    render_path = source_root / "render.asm"
+
+    main = code_without_comments(main_path.read_text(encoding="utf-8"))
+    video = code_without_comments(video_path.read_text(encoding="utf-8"))
+    player = code_without_comments(player_path.read_text(encoding="utf-8"))
+    sprites = code_without_comments(sprites_path.read_text(encoding="utf-8"))
+    render = code_without_comments(render_path.read_text(encoding="utf-8"))
+
+    if "MainLoop:" not in main:
+        fail(f"{main_path}: missing MainLoop label")
+    main_loop = main.split("MainLoop:", 1)[1]
+    if re.search(r"\bCALL\s+Maze_Draw\b", main_loop, flags=re.IGNORECASE):
+        fail(f"{main_path}: INC-2026-003 regression: Maze_Draw returned to MainLoop")
+    if not re.search(r"\bCALL\s+Render_Commit\b", main_loop, flags=re.IGNORECASE):
+        fail(f"{main_path}: MainLoop must call Render_Commit")
+    if not re.search(r"\bCALL\s+Render_Prepare\b", main_loop, flags=re.IGNORECASE):
+        fail(f"{main_path}: MainLoop must call Render_Prepare")
+
+    if re.search(r"^Video_DrawSpritePx:", video, flags=re.MULTILINE | re.IGNORECASE):
+        fail(f"{video_path}: INC-2026-003 regression: runtime-shift Video_DrawSpritePx restored")
+
+    forbidden_player_patterns = (
+        r"\bSCREEN_ADDR\b",
+        r"\bATTR_ADDR\b",
+        r"\bCALL\s+Video_",
+        r"\bCALL\s+Render_",
+        r"^Player_Draw:",
+    )
+    for pattern in forbidden_player_patterns:
+        if re.search(pattern, player, flags=re.MULTILINE | re.IGNORECASE):
+            fail(f"{player_path}: player simulation regained direct screen/render ownership ({pattern})")
+
+    if re.search(r"^Pac_FrameTable(?:Right|Left|Up|Down):", sprites, flags=re.MULTILINE):
+        fail(f"{sprites_path}: obsolete hand-written mobile actor pointer tables restored")
+
+    if "Render_DrawMasked8x8:" not in render:
+        fail(f"{render_path}: missing masked actor renderer")
+    if re.search(r"\bCALL\s+Input_Read\b", render, flags=re.IGNORECASE):
+        fail(f"{render_path}: renderer must not own physical/logical input polling")
+
+    # Dirty background restoration must not duplicate an attribute-only pass
+    # immediately before the bitmap+attribute cell draw.
+    maze_text = code_without_comments((source_root / "maze.asm").read_text(encoding="utf-8"))
+    if "Maze_DrawCell:" not in maze_text or "Maze_CanMove:" not in maze_text:
+        fail(f"{source_root / 'maze.asm'}: expected Maze_DrawCell/Maze_CanMove boundaries missing")
+    draw_cell = maze_text.split("Maze_DrawCell:", 1)[1].split("Maze_CanMove:", 1)[0]
+    if re.search(r"\bCALL\s+Maze_DrawTileAtOffset\b", draw_cell, flags=re.IGNORECASE):
+        fail(
+            f"{source_root / 'maze.asm'}: dirty restore reintroduced redundant attribute-only write"
+        )
+
+
 def check_binary(path: pathlib.Path, max_bytes: int) -> None:
     size = path.stat().st_size
     if size <= 0:
@@ -169,6 +229,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--maze", type=pathlib.Path, required=True)
     parser.add_argument("--generated-sprites", type=pathlib.Path, required=True)
+    parser.add_argument("--source-root", type=pathlib.Path, required=True)
     parser.add_argument("--binary", type=pathlib.Path)
     parser.add_argument("--max-binary-bytes", type=int, default=28672)
     args = parser.parse_args()
@@ -176,13 +237,14 @@ def main() -> int:
     try:
         check_maze(args.maze)
         check_generated_sprites(args.generated_sprites)
+        check_architecture(args.source_root)
         if args.binary is not None:
             check_binary(args.binary, args.max_binary_bytes)
     except (OSError, ValueError) as exc:
         print(f"project check failed: {exc}", file=sys.stderr)
         return 1
 
-    print("PAC48 structural checks passed")
+    print("PAC48 structural and architecture checks passed")
     return 0
 
 
