@@ -107,13 +107,14 @@ Test_Start:
         LD A, 9
         JP NZ, Test_Fail
 
-; Regression from owner video: at map cell (1,3), LEFT is a wall, DOWN is a
-; wall, RIGHT is open. With DOWN+RIGHT held while moving left, DOWN remains the
+; Regression from owner video, relocated to the equivalent topology in the
+; 0.3.8 landscape maze: at map cell (1,5), LEFT is a wall, DOWN is a wall,
+; RIGHT is open. With DOWN+RIGHT held while moving left, DOWN remains the
 ; preferred queued turn, but hitting the left dead end must immediately fall
 ; back to held RIGHT instead of freezing until DOWN is released.
         LD A, 24                    ; screen pixel x for maze cell x=1
         LD (Pac_PixelX), A
-        LD A, 40                    ; screen pixel y for maze cell y=3
+        LD A, 56                    ; screen pixel y for maze cell y=5
         LD (Pac_PixelY), A
         CALL Player_SyncTile
         LD A, 3                     ; moving LEFT into blocked wall
@@ -134,7 +135,7 @@ Test_Start:
         LD A, 11
         JP NZ, Test_Fail
         LD A, (Pac_PixelY)
-        CP 40
+        CP 56
         LD A, 12
         JP NZ, Test_Fail
         LD A, (Pac_ReqDir)
