@@ -38,7 +38,7 @@ Callers relied on undocumented `DE` survival across video helpers.
 Public assembly routines with reusable coordinates must document preserved/clobbered registers. Runtime and visual maze tests must exercise actual screen writes.
 
 ### Verification evidence
-V1/V2 canonical build/runtime/TAP-load pass. V3 visual maze/pellet verification remains required.
+V1/V2 canonical build/runtime/TAP-load pass. V3 visual maze/pellet restoration remains required.
 
 ---
 
@@ -89,7 +89,7 @@ Dedicated renderer, prepare/commit split, masked pre-shifted sprites, line LUT, 
 Canonical build rejects full-maze redraw in `MainLoop`, legacy runtime-shift drawing, simulation-owned screen writes, obsolete actor tables, invalid generated assets, and excessive binary/timing budgets.
 
 ### Verification evidence
-V1/V2/V4 pass. Current post-visual-recovery measurements are 4341 / 5497 / 9184 T-states for representative dirty cases; TAP reaches `$8000`. V3 visual rendering/turning remains required.
+V1/V2/V4 pass. Current post-visual-recovery measurements are 4341 / 5497 / 9184 T-states for representative dirty cases; TAP reaches `$8000`. Owner reports movement is very fluid. Broader V3 rendering/turning coverage remains required.
 
 ---
 
@@ -163,7 +163,7 @@ Later runs publish `pac48-latest.tap` successfully after canonical verification 
 
 ## INC-2026-008 - Maze attribute value overwritten by coordinate translation
 
-- **Status:** `FIXED_PENDING_VERIFY`
+- **Status:** `CLOSED`
 - **Severity:** `S0`
 - **Detected:** 2026-08-25
 - **Affected:** `src/maze.asm`, `src/sprites.asm`, `tests/runtime_harness.asm`, maze presentation
@@ -178,31 +178,46 @@ The owner-provided V3 screenshot showed an unreadable game screen: rows of diffe
 During the first attempted repair, `AF` and `DE` were pushed in the wrong stack order (`PUSH AF`, `PUSH DE`, then `POP AF`). The new runtime guard immediately failed with code 13, proving the test could catch the same class of error before release.
 
 ### Corrective action
-- preserve `DE`, then push the intended attribute `AF`, translate coordinates, pop `AF`, and call `Video_DrawSprite`;
-- document that the input attribute survives coordinate translation even though AF may be clobbered by the lower-level callee;
+- preserve the intended attribute across coordinate translation;
 - add runtime checks for known wall/pellet attributes through the real `Maze_Draw` path;
 - replace solid blue PAPER wall cells with black PAPER + bright-blue topology-selected bitmap boundary tiles;
 - shrink normal pellet art to a 2x2 dot.
 
 ### Regression guard
-The headless Z80 harness fails if:
-- maze wall `(0,0)` does not produce `Maze_AttrWall` at screen cell `(2,2)`;
-- maze pellet `(1,1)` does not produce `Maze_AttrPellet` at screen cell `(3,3)`;
-- the top-left wall bitmap does not contain the expected thin top/left boundary bytes.
-
-Visual V3 remains mandatory because deterministic cell assertions cannot judge overall maze composition.
+The headless Z80 harness fails if representative maze attributes or wall-boundary bitmap bytes differ from expected values. Visual V3 remains mandatory because cell assertions cannot judge overall composition.
 
 ### Verification evidence
-- run `32800881885` correctly failed with code 13 on the incorrect stack-order repair and prevented release publication;
-- corrected commit `e0e4afce51442df193eb48de18226d53a42ab703` passed GitHub Actions run `32800960272` completely;
-- sjasmplus: 0 errors / 0 warnings;
-- headless Z80 harness: PASS including the new maze attribute and wall-outline assertions;
-- V4 `Render_Commit`: dirty1 4341, dirty2 5497, dirty4 9184 T-states, all within budget;
-- binary 8279 bytes with 20393 bytes conservative headroom;
-- TAP 8359 bytes and fresh-48K tape simulation reaches `PC=$8000`;
-- verified release publication job: PASS.
+Run `32800960272` passed clean assembly, runtime harness, V4, TAP load and release publication. The owner then supplied a new V3 screenshot, explicitly said the result was "molto meglio", confirmed the controls respond and movement is very fluid, and the previous color-band/filled-rectangle corruption was gone. `P48-018` is therefore `DONE` and this incident is closed.
 
-The incident stays `FIXED_PENDING_VERIFY` until a fresh V3 screenshot confirms that the visible color-band/fill corruption is gone on the actual game screen.
+---
+
+## INC-2026-009 - Alignment-only collision assumption could permit wall penetration
+
+- **Status:** `FIXED_PENDING_VERIFY`
+- **Severity:** `S1`
+- **Detected:** 2026-08-25
+- **Affected:** `src/player.asm`, `tests/runtime_harness.asm`
+- **Related TODO:** `P48-024`
+
+### Symptom
+After the visual recovery, the owner reported that Pac occasionally appeared to pass through maze walls during otherwise smooth play.
+
+### Root cause
+The exact input sequence observed by the owner was not captured, so the trigger is not claimed with certainty. Static/runtime analysis did identify a real collision weakness: `Player_CanContinue` rechecked collision only when both pixel coordinates were multiples of 8 and otherwise returned success unconditionally. Wall safety therefore depended on a separate invariant that the orthogonal axis could never become even one pixel misaligned.
+
+A deterministic harness state with `y=25` while moving horizontally toward a wall proves the weakness: the old implementation would advance without checking that wall.
+
+### Corrective action
+- validate every one-pixel movement using the advancing edge of the full 8x8 player box;
+- sample both leading-edge corners for all four cardinal directions;
+- convert screen-pixel samples to maze cells and delegate to canonical `Maze_CanMove`;
+- preserve grid-aligned buffered turning so the current responsive control feel is unchanged.
+
+### Regression guard
+The headless Z80 harness forces an orthogonal one-pixel drift beside a known wall. Pac must remain at the previous coordinate and `Pac_Dir` must be cleared. Legal corridor movement remains separately tested.
+
+### Verification evidence
+GitHub Actions run `32801837183` passed clean assembly, the expanded Z80 runtime harness, renderer tests, fresh-48K TAP loading, V4 timing, artifact checks and release publication. Current binary is 8503 bytes with 20169 bytes conservative headroom; TAP is 8583 bytes. Owner V3 confirmation during sustained play is still required before `CLOSED`.
 
 ---
 
