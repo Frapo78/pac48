@@ -67,10 +67,10 @@ def main() -> int:
         if not re.search(r"\bCALL\s+HUD_DrawBuildStamp\b", main_asm, flags=re.IGNORECASE):
             fail("src/main.asm does not draw the version/build stamp at startup")
 
-        # Build identity must use the real Spectrum ROM/system font, not a tiny
-        # custom font that becomes unreadable in emulator screenshots.
-        if not re.search(r"ROM_FONT_ADDR\s+EQU\s+\$3C00", hud_asm, flags=re.IGNORECASE):
-            fail("src/hud.asm does not use the ZX Spectrum ROM font at $3C00")
+        # Printable ROM glyphs begin at $3D00 for ASCII 32. hud.asm subtracts
+        # 32 before indexing, so accepting $3C00 here would render ROM garbage.
+        if not re.search(r"ROM_FONT_ADDR\s+EQU\s+\$3D00", hud_asm, flags=re.IGNORECASE):
+            fail("src/hud.asm must use printable ZX Spectrum ROM glyphs at $3D00")
         if not re.search(r"\bCALL\s+Video_DrawSprite\b", hud_asm, flags=re.IGNORECASE):
             fail("src/hud.asm does not render ROM 8x8 glyphs through the tile renderer")
         if "HUD_Glyphs:" in hud_asm or "HUD_DrawGlyph3x5:" in hud_asm:
