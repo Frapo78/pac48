@@ -2,7 +2,8 @@
 ; PAC48 headless control-feel verification harness
 ; ============================================================
 ; Tests joystick-direction selection, immediate reversals, stale-turn cancel,
-; and dead-end diagonal fallback using the real Z80 input/player routines.
+; dead-end diagonal fallback, arcade turn-window centering and centre tunnel
+; wrap using the real Z80 input/player routines.
 
         ORG 32768
         JP Test_Start
@@ -108,19 +109,17 @@ Test_Start:
         JP NZ, Test_Fail
 
 ; Regression from owner video, relocated to the equivalent topology in the
-; 0.3.8 landscape maze: at map cell (1,5), LEFT is a wall, DOWN is a wall,
-; RIGHT is open. With DOWN+RIGHT held while moving left, DOWN remains the
-; preferred queued turn, but hitting the left dead end must immediately fall
-; back to held RIGHT instead of freezing until DOWN is released.
+; landscape maze: at map cell (1,5), LEFT is a wall, DOWN is a wall, RIGHT is
+; open. DOWN+RIGHT held while moving left must fall back to RIGHT immediately.
         LD A, 24                    ; screen pixel x for maze cell x=1
         LD (Pac_PixelX), A
         LD A, 56                    ; screen pixel y for maze cell y=5
         LD (Pac_PixelY), A
         CALL Player_SyncTile
-        LD A, 3                     ; moving LEFT into blocked wall
+        LD A, 3
         LD (Pac_Dir), A
         LD (Pac_FacingDir), A
-        LD A, 2                     ; preferred DOWN turn, also blocked here
+        LD A, 2
         LD (Pac_ReqDir), A
         LD A, INPUT_MASK_DOWN + INPUT_MASK_RIGHT
         LD (Input_HeldMask), A
@@ -131,7 +130,7 @@ Test_Start:
         LD A, 10
         JP NZ, Test_Fail
         LD A, (Pac_PixelX)
-        CP 25                       ; reversed RIGHT and moved in same frame
+        CP 25
         LD A, 11
         JP NZ, Test_Fail
         LD A, (Pac_PixelY)
@@ -141,6 +140,138 @@ Test_Start:
         LD A, (Pac_ReqDir)
         CP 4
         LD A, 13
+        JP NZ, Test_Fail
+
+; P48-031 pre-turn: node (6,3) is at screen x=64,y=40 and has a legal DOWN
+; branch. Starting three pixels before it while moving RIGHT must snap x to 64,
+; turn DOWN and advance vertically in the same frame.
+        LD A, 61
+        LD (Pac_PixelX), A
+        LD A, 40
+        LD (Pac_PixelY), A
+        CALL Player_SyncTile
+        LD A, 4
+        LD (Pac_Dir), A
+        LD (Pac_FacingDir), A
+        LD A, 2
+        LD (Pac_ReqDir), A
+        XOR A
+        LD (Input_HeldMask), A
+        CALL Player_Update
+
+        LD A, (Pac_PixelX)
+        CP 64
+        LD A, 20
+        JP NZ, Test_Fail
+        LD A, (Pac_PixelY)
+        CP 41
+        LD A, 21
+        JP NZ, Test_Fail
+        LD A, (Pac_Dir)
+        CP 2
+        LD A, 22
+        JP NZ, Test_Fail
+        LD A, (Pac_FacingDir)
+        CP 2
+        LD A, 23
+        JP NZ, Test_Fail
+
+; P48-031 post-turn tolerance: two pixels beyond the same node must still be
+; recoverable. The travel axis is recentered to x=64 before moving DOWN.
+        LD A, 66
+        LD (Pac_PixelX), A
+        LD A, 40
+        LD (Pac_PixelY), A
+        CALL Player_SyncTile
+        LD A, 4
+        LD (Pac_Dir), A
+        LD (Pac_FacingDir), A
+        LD A, 2
+        LD (Pac_ReqDir), A
+        CALL Player_Update
+
+        LD A, (Pac_PixelX)
+        CP 64
+        LD A, 24
+        JP NZ, Test_Fail
+        LD A, (Pac_PixelY)
+        CP 41
+        LD A, 25
+        JP NZ, Test_Fail
+        LD A, (Pac_Dir)
+        CP 2
+        LD A, 26
+        JP NZ, Test_Fail
+
+; Midpoint four pixels away is intentionally outside the +/-3 turn window and
+; must not snap prematurely.
+        LD A, 60
+        LD (Pac_PixelX), A
+        LD A, 40
+        LD (Pac_PixelY), A
+        CALL Player_SyncTile
+        LD A, 4
+        LD (Pac_Dir), A
+        LD (Pac_FacingDir), A
+        LD A, 2
+        LD (Pac_ReqDir), A
+        CALL Player_Update
+        LD A, (Pac_PixelX)
+        CP 61
+        LD A, 27
+        JP NZ, Test_Fail
+        LD A, (Pac_PixelY)
+        CP 40
+        LD A, 28
+        JP NZ, Test_Fail
+        LD A, (Pac_Dir)
+        CP 4
+        LD A, 29
+        JP NZ, Test_Fail
+
+; P48-034 centre tunnel: leaving the left endpoint while travelling LEFT wraps
+; to maze x=27 in one frame without entering an out-of-range map coordinate.
+        LD A, Maze_TunnelLeftPixelX
+        LD (Pac_PixelX), A
+        LD A, Maze_TunnelPixelY
+        LD (Pac_PixelY), A
+        CALL Player_SyncTile
+        LD A, 3
+        LD (Pac_Dir), A
+        LD (Pac_FacingDir), A
+        LD (Pac_ReqDir), A
+        CALL Player_Update
+
+        LD A, (Pac_PixelX)
+        CP Maze_TunnelRightPixelX
+        LD A, 30
+        JP NZ, Test_Fail
+        LD A, (Pac_X)
+        CP Maze_TunnelRightX
+        LD A, 31
+        JP NZ, Test_Fail
+        LD A, (Pac_Y)
+        CP Maze_TunnelRow
+        LD A, 32
+        JP NZ, Test_Fail
+
+; Symmetric right-to-left wrap.
+        LD A, 4
+        LD (Pac_Dir), A
+        LD (Pac_FacingDir), A
+        LD (Pac_ReqDir), A
+        CALL Player_Update
+        LD A, (Pac_PixelX)
+        CP Maze_TunnelLeftPixelX
+        LD A, 33
+        JP NZ, Test_Fail
+        LD A, (Pac_X)
+        CP Maze_TunnelLeftX
+        LD A, 34
+        JP NZ, Test_Fail
+        LD A, (Pac_Y)
+        CP Maze_TunnelRow
+        LD A, 35
         JP NZ, Test_Fail
 
         XOR A
