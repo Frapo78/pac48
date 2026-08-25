@@ -220,27 +220,76 @@ Future maze validation must use graph reachability, not only row length/dimensio
 
 ## INC-2026-012 - Junction turn request can feel stuck or miss the first opening
 
-- **Status:** `DETECTED`
+- **Status:** `FIXED_PENDING_VERIFY`
 - **Severity:** `S1`
 - **Detected:** 2026-08-25
-- **Affected:** `src/input.asm`, `src/player.asm`, control tests
+- **Affected:** `src/input.asm`, `src/player.asm`, `tests/control_harness.asm`
 - **Related TODO:** `P48-028`
 
 ### Symptom
 Around some exits Pac feels stuck. Example: while travelling horizontally, holding `down + right` is expected to queue a downward turn and take the first legal downward opening.
 
-### Current contributing design
-- `Input_Read` collapses simultaneous directions to one direction using fixed per-device priority;
-- `Pac_ReqDir` stores only that collapsed result;
-- `Player_TryRequestedDir` executes a turn only when both pixel axes are exactly 8-pixel aligned.
+### Root cause evolution
+The first repair correctly preserved simultaneous directions and prioritized the perpendicular axis, but it still collapsed the held state to one preferred request. It also returned `0` when only the current direction was held, allowing a stale queued turn to survive after the player had effectively cancelled it.
 
-This is sufficient for basic movement but not yet the forgiving queued-turn behavior expected from an arcade maze game.
-
-### Corrective action plan
-Implement direction-aware requested-turn buffering: preserve a perpendicular requested turn while the current direction remains held, execute it at the first legal junction, and evaluate a bounded junction grace/lookahead that does not permit wall clipping.
+### Corrective action
+`Input_Read` now retains the complete cardinal mask in `Input_HeldMask`. Current-direction input explicitly replaces stale queue state; perpendicular input remains preferred at junctions; 180-degree reversals remain immediate; and `Player_Update` can use a physically-held reversal if the preferred perpendicular request is blocked at a dead end.
 
 ### Regression guard
-Add deterministic symmetric cases for all four turn directions, including a requested turn held across multiple blocked cells before the first legal opening.
+The dedicated control harness includes symmetric queued-turn cases, immediate reversal, stale-turn cancellation, and the exact diagonal dead-end fallback reproduced from owner video.
+
+### Verification evidence
+GitHub Actions run `32807389635` passes the control harness, runtime harness, renderer model, TAP-load simulation and release publication for `0.3.7-beta` build `8077948`. Owner V3 is still required before closing.
+
+---
+
+## INC-2026-013 - ROM build stamp indexed 256 bytes before printable glyphs
+
+- **Status:** `FIXED_PENDING_VERIFY`
+- **Severity:** `S1`
+- **Detected:** 2026-08-25
+- **Affected:** `src/hud.asm`, `tools/check_build_identity.py`
+- **Related TODO:** `P48-030`
+
+### Symptom
+The version/build string occupied the intended top row but was unreadable garbage despite using the Spectrum ROM font path.
+
+### Root cause
+`HUD_GetRomGlyph` subtracts ASCII 32 before multiplying by 8. With that indexing convention, printable character 32 begins at ROM `$3D00`. The previous code used `$3C00`, which is the CHARS-style base only when indexing by the full ASCII code; subtracting 32 as well shifted every lookup 256 bytes too early into unrelated ROM data.
+
+### Corrective action
+Set `ROM_FONT_ADDR EQU $3D00` while keeping the `SUB 32` indexing. Update the build-identity guard so `$3C00` can no longer pass.
+
+### Regression guard
+`tools/check_build_identity.py` now requires `$3D00` and rejects reintroduction of the old mini-font.
+
+### Verification evidence
+`0.3.7-beta` build `8077948` assembles and passes build-identity checks. Owner V3 must confirm actual readability before `CLOSED`.
+
+---
+
+## INC-2026-014 - Diagonal preference could freeze Pac at a dead end
+
+- **Status:** `FIXED_PENDING_VERIFY`
+- **Severity:** `S1`
+- **Detected:** 2026-08-25
+- **Affected:** `src/input.asm`, `src/memory.asm`, `src/player.asm`, `tests/control_harness.asm`
+- **Related TODO:** `P48-028`
+
+### Symptom
+In the owner recording, Pac becomes stationary for roughly half a second while `DOWN+RIGHT` remains held. Releasing DOWN lets RIGHT immediately resume movement. Similar behavior was described as Pac sometimes not finishing a corridor.
+
+### Proven root cause
+The 0.3.6 selector always preferred the perpendicular component of a diagonal. When that preferred direction was blocked at a dead end, the alternate held direction was discarded. The player therefore set `Pac_Dir=0` even though a legal reversal was still physically held.
+
+### Corrective action
+Retain `Input_HeldMask` for the full frame. If the queued preferred direction is blocked and the current travel direction also cannot continue, `Player_TryHeldReversal` checks the held opposite direction and reverses/moves in the same frame instead of stopping. Holding only the current direction now returns that direction, cancelling stale queued turns.
+
+### Regression guard
+`tests/control_harness.asm` reproduces the exact topology at maze cell `(1,3)`: LEFT blocked, DOWN blocked, RIGHT open, `DOWN+RIGHT` held while moving LEFT. The test requires Pac to switch RIGHT and advance one pixel in that same update.
+
+### Verification evidence
+GitHub Actions run `32807389635` passes with control harness result 0, assembly 0 errors/0 warnings, runtime harness PASS, TAP load PASS and release publication PASS. Owner V3 remains required.
 
 ---
 
