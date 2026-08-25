@@ -1,8 +1,8 @@
 ; ============================================================
 ; PAC48 headless control-feel verification harness
 ; ============================================================
-; Tests pure joystick-direction selection and immediate safe reversal using
-; the real Z80 input/player routines without depending on physical ports.
+; Tests joystick-direction selection, immediate reversals, stale-turn cancel,
+; and dead-end diagonal fallback using the real Z80 input/player routines.
 
         ORG 32768
         JP Test_Start
@@ -47,19 +47,16 @@ Test_Start:
         LD A, 2
         JP NZ, Test_Fail
 
-; Holding only the current direction must not overwrite an already queued turn.
+; Holding only the current direction must explicitly return that direction so
+; the main loop replaces any stale queued turn.
         LD A, 4
         LD (Pac_Dir), A
         LD A, 2
         LD (Pac_ReqDir), A
         LD A, INPUT_MASK_RIGHT
         CALL Input_SelectFromMask
-        OR A
+        CP 4
         LD A, 3
-        JP NZ, Test_Fail
-        LD A, (Pac_ReqDir)
-        CP 2
-        LD A, 4
         JP NZ, Test_Fail
 
 ; Symmetric vertical case: up+left while moving up requests LEFT.
@@ -68,7 +65,7 @@ Test_Start:
         LD A, INPUT_MASK_UP + INPUT_MASK_LEFT
         CALL Input_SelectFromMask
         CP 3
-        LD A, 5
+        LD A, 4
         JP NZ, Test_Fail
 
 ; Opposite cardinal direction remains a valid request.
@@ -77,7 +74,7 @@ Test_Start:
         LD A, INPUT_MASK_LEFT
         CALL Input_SelectFromMask
         CP 3
-        LD A, 6
+        LD A, 5
         JP NZ, Test_Fail
 
 ; A 180-degree reversal is safe inside the current corridor and must happen
@@ -95,19 +92,54 @@ Test_Start:
 
         LD A, (Pac_PixelX)
         CP 24
-        LD A, 7
+        LD A, 6
         JP NZ, Test_Fail
         LD A, (Pac_PixelY)
         CP 24
-        LD A, 8
+        LD A, 7
         JP NZ, Test_Fail
         LD A, (Pac_Dir)
         CP 3
-        LD A, 9
+        LD A, 8
         JP NZ, Test_Fail
         LD A, (Pac_FacingDir)
         CP 3
+        LD A, 9
+        JP NZ, Test_Fail
+
+; Regression from owner video: at map cell (1,3), LEFT is a wall, DOWN is a
+; wall, RIGHT is open. With DOWN+RIGHT held while moving left, DOWN remains the
+; preferred queued turn, but hitting the left dead end must immediately fall
+; back to held RIGHT instead of freezing until DOWN is released.
+        LD A, 24                    ; screen pixel x for maze cell x=1
+        LD (Pac_PixelX), A
+        LD A, 40                    ; screen pixel y for maze cell y=3
+        LD (Pac_PixelY), A
+        CALL Player_SyncTile
+        LD A, 3                     ; moving LEFT into blocked wall
+        LD (Pac_Dir), A
+        LD (Pac_FacingDir), A
+        LD A, 2                     ; preferred DOWN turn, also blocked here
+        LD (Pac_ReqDir), A
+        LD A, INPUT_MASK_DOWN + INPUT_MASK_RIGHT
+        LD (Input_HeldMask), A
+        CALL Player_Update
+
+        LD A, (Pac_Dir)
+        CP 4
         LD A, 10
+        JP NZ, Test_Fail
+        LD A, (Pac_PixelX)
+        CP 25                       ; reversed RIGHT and moved in same frame
+        LD A, 11
+        JP NZ, Test_Fail
+        LD A, (Pac_PixelY)
+        CP 40
+        LD A, 12
+        JP NZ, Test_Fail
+        LD A, (Pac_ReqDir)
+        CP 4
+        LD A, 13
         JP NZ, Test_Fail
 
         XOR A
