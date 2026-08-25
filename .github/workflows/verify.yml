@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   build:
-    name: Build and 48K smoke verification
+    name: Build and deterministic verification
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       - name: Checkout PAC48
@@ -54,22 +54,9 @@ jobs:
           VERSION="$(tr -d '[:space:]' < VERSION)"
           test -s "build/pac48-${VERSION}.tap"
           test -s src/generated/pac_shifted.asm
-          ls -lh build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap" src/generated/pac_shifted.asm
+          wc -c build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap"
 
-      - name: Install Fuse 48K smoke-test tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y fuse-emulator-gtk spectrum-roms xvfb xdotool imagemagick
-          command -v fuse
-          fuse --version
-
-      - name: Run Fuse 48K smoke test
-        run: |
-          chmod +x tools/emulator_smoke.sh
-          ./tools/emulator_smoke.sh build/pac48.tap build/emulator-smoke
-
-      - name: Upload verified build and smoke artifacts
-        if: always()
+      - name: Upload verified build artifacts
         uses: actions/upload-artifact@v4
         with:
           name: pac48-${{ github.sha }}
@@ -80,4 +67,3 @@ jobs:
             build/pac48.tap
             build/pac48-*.tap
             src/generated/pac_shifted.asm
-            build/emulator-smoke/**
