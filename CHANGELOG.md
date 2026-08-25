@@ -17,8 +17,10 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 - Build-time `tools/gen_shifted_sprites.py` generator producing eight horizontal phases and masks for every player animation frame.
 - Deterministic architecture, maze, generated-asset, memory-budget, and renderer reference-model checks.
 - Headless 48K Z80 runtime harness executed by the canonical build.
+- Runtime visual-baseline guards that verify representative maze wall/pellet attributes and wall bitmap bytes through the real `Maze_Draw` path.
+- Sixteen topology-selected 8x8 wall-boundary bitmap variants for thin maze outlines.
 - Contention-aware `Render_Commit` performance harness using SkoolKit `trace.py` directly on the raw assembled code.
-- Fresh-48K TAP load simulation using `tap2sna.py`; the build now proves that the generated tape reaches PAC48 entry point `32768` (`$8000`).
+- Fresh-48K TAP load simulation using `tap2sna.py`; the build proves the generated tape reaches PAC48 entry point `32768` (`$8000`).
 - GitHub Actions verification using pinned sjasmplus 1.23.1 and SkoolKit 10.1.
 - Automatic per-commit GitHub Releases for verified `main` builds.
 - Stable release asset name `pac48-latest.tap` and stable download path `/releases/latest/download/pac48-latest.tap`.
@@ -27,25 +29,31 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 - Repeatable V0-V5 verification protocol at `docs/TESTING.md`.
 - Rendering architecture ADR at `docs/adr/0001-rendering-architecture.md`.
 - Persistent `Pac_FacingDir` state so visual facing remains stable when movement stops against a wall.
+- Structured visual-recovery roadmap `P48-018` through `P48-023`, based on the owner-provided arcade reference.
 
 ### Changed
 
-- Main loop now commits prepared rendering immediately after `HALT`, then performs input/game update/render preparation outside the short screen-write phase.
+- Main loop commits prepared rendering immediately after `HALT`, then performs input/game update/render preparation outside the short screen-write phase.
 - Maze is drawn once at startup instead of being redrawn in full every gameplay frame.
 - Dirty-cell restoration performs one bitmap+attribute cell draw instead of redundantly writing the attribute twice.
-- Player module now owns simulation only; raw screen drawing moved to the renderer.
+- Player module owns simulation only; raw screen drawing is owned by the renderer.
 - Moving actors no longer write Spectrum attributes in the render hot path.
-- Empty walkable maze cells use yellow ink on black paper so the yellow player remains visible while crossing empty/pellet cells.
-- Build pipeline now generates sprite assets, runs deterministic tests, assembles, executes Z80 runtime tests, profiles timing, creates TAP files, and simulates loading the resulting TAP.
+- Wall presentation changed from solid blue PAPER cells to black PAPER + bright-blue bitmap boundaries derived from neighboring wall topology.
+- Normal pellet art reduced to a small 2x2 dot to restore a classic maze/pellet visual hierarchy.
+- Empty and pellet walkable cells retain yellow ink on black paper so the current yellow player remains visible without actor attribute writes.
+- `Maze_CanMove` now shares `Maze_GetCellValue` with wall-topology lookup while preserving existing collision semantics.
+- Build pipeline generates sprite assets, runs deterministic tests, assembles, executes Z80 runtime tests, profiles timing, creates TAP files, and simulates loading the resulting TAP.
 - Renderer chooses animation direction from persistent facing state rather than defaulting to right when `Pac_Dir=0`.
 - Removed obsolete handwritten `Pac_FrameTable*` runtime pointer tables; generated phase tables are authoritative.
-- Structural validation now requires exactly 20 maze rows of 28 cells, 160 unique generated phases, 8 scanlines x 4 bytes per phase, and exact 40-pointer tables per direction.
+- Structural validation requires exactly 20 maze rows of 28 cells, 160 unique generated phases, 8 scanlines x 4 bytes per phase, and exact 40-pointer tables per direction.
 - GitHub Actions no longer creates redundant builds/releases for documentation-only pushes.
 - Release publication is downstream of the verified build job and republishes the exact already-tested artifact rather than recompiling separately.
 
 ### Fixed
 
 - Preserved maze coordinates across attribute/bitmap drawing to prevent `DE` clobber corruption (`INC-2026-001`, `P48-001`).
+- Fixed the S0 maze color-band regression where `Maze_DrawAtOffset` overwrote the intended attribute in `A` while translating coordinates, causing screen Y values to become Spectrum attributes (`INC-2026-008`, `P48-018`).
+- Corrected the first attempted attribute-preservation repair after the new runtime guard caught the wrong AF/DE stack order with failure code 13 before release.
 - Corrected Sinclair 1 and Sinclair 2 Interface 2 direction mappings (`INC-2026-002`, `P48-002`).
 - Replaced the destructive runtime-shift actor path and removed full-maze redraw from the normal frame path (`INC-2026-003`).
 - Prevented the stopped player from visually snapping to the right-facing animation when blocked.
@@ -54,24 +62,28 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 
 ### Verification
 
-Verified in GitHub Actions on 2026-08-25:
+Current visual-recovery baseline verified by GitHub Actions run `32800960272`, commit `e0e4afce51442df193eb48de18226d53a42ab703`:
 
 - sjasmplus 1.23.1: game assembly completed with **0 errors / 0 warnings**.
-- SkoolKit 10.1 headless 48K runtime harness: PASS.
-- Renderer reference model: scanline addressing, shift/mask generation, and dirty-cell coverage PASS.
-- Binary size: **8042 bytes**.
-- Conservative upper-RAM safety-ceiling headroom: **20630 bytes**.
-- Generated TAP size: **8122 bytes**.
+- SkoolKit 10.1 headless 48K runtime harness: **PASS**, including exact wall/pellet attribute checks and top-left wall-outline bitmap checks.
+- Renderer reference model: scanline addressing, shift/mask generation, and dirty-cell coverage **PASS**.
+- Binary size: **8279 bytes**.
+- Conservative upper-RAM safety-ceiling headroom: **20393 bytes**.
+- Generated TAP size: **8359 bytes**.
 - Fresh 48K tape simulation: loaded code block at 32768 and stopped with **PC=32768 ($8000)**.
 - `Render_Commit` with 48K contention:
-  - common, 1 previous dirty cell: **4320 T-states / 547 instructions**;
-  - cardinal, 2 previous dirty cells: **5455 T-states / 690 instructions**;
-  - arbitrary 4-cell case: **7800 T-states / 978 instructions**.
+  - common, 1 previous dirty cell: **4341 T-states / 549 instructions**;
+  - cardinal, 2 previous dirty cells: **5497 T-states / 694 instructions**;
+  - arbitrary 4-cell case: **9184 T-states / 1145 instructions**.
 - All measured renderer cases remain below the 12,000 T-state common engineering target and 14,000 warning threshold.
-- Release-package SHA-256 checks pass before GitHub publication.
+- Verified release publication completed successfully.
+- The earlier run `32800881885` deliberately remained red because the newly-added visual-baseline guard caught an incorrect AF/DE stack repair before a TAP release could be published.
 
 ### Known limitations
 
+- The corrected P48-018 build still requires a fresh owner-visible V3 screenshot before the visual regression can be declared closed.
+- Current 28x20 maze topology is still the old generic layout; `P48-019` will redesign it into a more coherent, symmetric arcade-style composition after P48-018 visual acceptance.
+- HUD, power pellets, ghost house, enemies, lives, and bonus presentation remain planned under `P48-020` through `P48-022` and gameplay milestone `P48-009`.
 - Current renderer prepares/draws the player only; the actor descriptor/dirty-cell model still needs extension to enemies.
 - Current generated masks infer transparency from zero bits in canonical bitmap data. Future sprites needing opaque zero-valued pixels require explicit canonical mask support (`P48-016`).
 - Actor color is currently constrained by static maze attributes; distinct per-ghost colors are deferred.
