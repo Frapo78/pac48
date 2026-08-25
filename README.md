@@ -17,6 +17,7 @@ Implemented in source:
 - 28x20 maze data and collision
 - pixel/sub-tile player movement
 - buffered requested direction at grid intersections
+- persistent visual facing direction when movement stops
 - directional 8x8 player animation
 - full maze draw only during startup/level initialization
 - dedicated renderer with prepare/commit frame phases
@@ -24,8 +25,8 @@ Implemented in source:
 - masked actor compositing
 - build-generated eight-phase horizontally pre-shifted player sprites
 - 192-entry Spectrum bitmap scanline lookup table
-- structural build checks for maze/assets and upper-RAM binary budget
-- persistent incident/regression registry and continuous changelog
+- structural and architecture regression checks in the canonical build
+- persistent incident/regression registry, continuous changelog, and repeatable verification protocol
 
 Still incomplete:
 
@@ -36,7 +37,9 @@ Still incomplete:
 - complete game-state loop
 - frightened/energizer mode
 - sound
-- full emulator/hardware/timing verification of the new renderer
+- full assembly/emulator/hardware/timing verification of the new renderer
+
+The renderer migration is therefore **implemented but still under `VERIFY`**. New gameplay features should not expand until the required build, emulator, and timing checks are completed.
 
 ## Rendering architecture
 
@@ -107,6 +110,7 @@ pac48/
 │  ├─ ARCHITECTURE.md
 │  ├─ TODO.md
 │  ├─ INCIDENTS.md
+│  ├─ TESTING.md
 │  └─ adr/
 │     └─ 0001-rendering-architecture.md
 │
@@ -132,32 +136,33 @@ Before modifying code, read in this order:
 2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)
 3. [`docs/adr/0001-rendering-architecture.md`](docs/adr/0001-rendering-architecture.md)
 4. [`docs/INCIDENTS.md`](docs/INCIDENTS.md)
-5. [`CHANGELOG.md`](CHANGELOG.md)
-6. [`docs/TODO.md`](docs/TODO.md)
+5. [`docs/TESTING.md`](docs/TESTING.md)
+6. [`CHANGELOG.md`](CHANGELOG.md)
+7. [`docs/TODO.md`](docs/TODO.md)
 
-The files have different roles:
+The files have intentionally different roles:
 
 - `TODO.md` — planned work, dependencies, acceptance criteria, verification status;
 - `INCIDENTS.md` — permanent record of subtle bugs, failed approaches, root causes, and regression guards;
+- `TESTING.md` — V0-V5 verification protocol and incident-closure requirements;
 - `CHANGELOG.md` — continuous record of what changed under `Unreleased`;
 - `docs/adr/` — durable architecture decisions and rejected alternatives.
 
-Resolved incidents are intentionally retained so future agents do not repeat them.
+Resolved incidents are intentionally retained so future agents do not repeat them. Where practical, their regression guards are also encoded into `tools/check_project.py`, so the canonical build fails if a known bad architecture pattern returns.
 
 ## Current verification priorities
 
-The renderer/input migration is implemented but remains `VERIFY` until evidence is complete.
-
 Before broad gameplay work:
 
-1. run the canonical build successfully;
-2. visually verify maze restoration and all pixel phases;
-3. smoke-test keyboard, Kempston, Sinclair 1, and Sinclair 2;
-4. measure `Render_Commit` in a cycle-aware emulator;
-5. record common/worst actor and dirty-cell counts;
-6. close or update `INC-2026-001`, `INC-2026-002`, and `INC-2026-003` with verification evidence.
+1. run V1 structural/architecture checks;
+2. run the V2 canonical assembly/TAP build successfully;
+3. perform V3 visual dirty-restoration and all-pixel-phase tests;
+4. smoke-test keyboard, Kempston, Sinclair 1, and Sinclair 2;
+5. measure `Render_Commit` under V4 in a cycle-aware emulator;
+6. record common/worst actor and dirty-cell counts;
+7. close or update `INC-2026-001`, `INC-2026-002`, and `INC-2026-003` with durable evidence.
 
-See [`docs/TODO.md`](docs/TODO.md) for exact criteria.
+See [`docs/TESTING.md`](docs/TESTING.md) and [`docs/TODO.md`](docs/TODO.md) for exact criteria.
 
 ## Build
 
@@ -177,10 +182,11 @@ Canonical build:
 The build script:
 
 1. generates `src/generated/pac_shifted.asm` from canonical frames in `src/sprites.asm`;
-2. validates maze and generated asset structure;
-3. assembles the game;
-4. checks the current binary/headroom budget;
-5. creates normal and versioned TAP files.
+2. validates maze dimensions/content and generated phase/table structure;
+3. enforces architecture regression guards (no per-frame full maze redraw, no legacy runtime-shift player renderer, no player screen ownership, no obsolete mobile-actor tables, no redundant dirty-cell attribute pass);
+4. assembles the game;
+5. checks the current binary/headroom budget;
+6. creates normal and versioned TAP files.
 
 Do not run a clean manual `sjasmplus src/main.asm` build without first generating the sprite include. The build script is the supported path.
 
@@ -210,6 +216,7 @@ The repository historically states GNU GPL intent, but the exact GPL variant and
 - keep changes independently verifiable
 - document non-obvious Z80 register/timing contracts
 - preserve incident history and regression guards
+- turn repeatable incident lessons into executable build checks where practical
 - update the changelog continuously during development
 
 Brought to you with ❤️ by Francesco Poltero
