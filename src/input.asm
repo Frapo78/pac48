@@ -21,12 +21,12 @@ INPUT_MASK_UP    EQU %00001000
 Input_Read:
     LD A, (Input_Mode)
     OR A
-    JR Z, .read_keyboard
+    JP Z, .read_keyboard
     CP 1
-    JR Z, .read_kempston
+    JP Z, .read_kempston
     CP 2
-    JR Z, .read_sinclair1
-    JR .read_sinclair2
+    JP Z, .read_sinclair1
+    JP .read_sinclair2
 
 .read_keyboard:
     LD B, 0
