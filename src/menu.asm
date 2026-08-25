@@ -20,7 +20,7 @@ Menu_Run:
     JR Z, .choose_keyboard
     BIT 1, A                ; '2' -> Kempston
     JR Z, .choose_kempston
-    BIT 2, A                ; '3' -> Sinclair
+    BIT 2, A                ; '3' -> Sinclair 1
     JR Z, .choose_sinclair1
     BIT 3, A                ; '4' -> Sinclair 2
     JR Z, .choose_sinclair2
@@ -41,11 +41,13 @@ Menu_Run:
 .store_mode:
     LD (Input_Mode), A
     XOR A
-    LD (Pac_Dir), A          ; reset direzione giocatore
+    LD (Pac_Dir), A
     LD (Pac_ReqDir), A
+    LD A, 4                 ; default visual facing = right
+    LD (Pac_FacingDir), A
 
 .wait_release:
-    LD BC, $F7FE             ; riga tasti 1-5
+    LD BC, $F7FE
     IN A, (C)
     AND %00001111
     CP %00001111
