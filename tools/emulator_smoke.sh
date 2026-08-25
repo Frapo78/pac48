@@ -18,7 +18,7 @@ for cmd in Xvfb fuse xdotool import compare; do
 done
 
 mkdir -p "$OUT_DIR"
-rm -f "$OUT_DIR"/*.png "$OUT_DIR"/*.log
+rm -f "$OUT_DIR"/*.png "$OUT_DIR"/*.log "$OUT_DIR"/result.txt
 
 export DISPLAY="$DISPLAY_ID"
 Xvfb "$DISPLAY" -screen 0 1024x768x24 >"$OUT_DIR/xvfb.log" 2>&1 &
@@ -60,7 +60,8 @@ if [[ -z "$WINDOW_ID" ]]; then
   exit 1
 fi
 
-xdotool windowactivate --sync "$WINDOW_ID"
+# Do not use windowactivate here: bare Xvfb has no window manager. xdotool's
+# --window event delivery works directly against the Fuse X window.
 
 # Accelerated autoload should reach PAC48's control menu quickly.
 sleep 2
