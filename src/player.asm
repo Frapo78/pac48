@@ -10,6 +10,10 @@ Player_Update:
     OR A
     RET Z
 
+    ; Validate the leading edge of the full 8x8 actor for every pixel step.
+    ; This is deliberately stronger than the old "aligned node only" check:
+    ; even if orthogonal alignment is ever disturbed, Pac cannot drift through
+    ; a wall while travelling between tile centres.
     CALL Player_CanContinue
     OR A
     JR NZ, .move
@@ -47,10 +51,12 @@ Player_Update:
 
 .sync_tile:
     CALL Player_SyncTile
+    CALL Player_ConsumeCurrentPellet
 .done:
     RET
 
-; Prova a cambiare direzione solo quando il player e' allineato alla griglia.
+; Try to change direction only when the player is aligned to the 8x8 grid.
+; Requested direction stays buffered until a legal turn becomes available.
 Player_TryRequestedDir:
     LD A, (Pac_ReqDir)
     OR A
@@ -68,24 +74,122 @@ Player_TryRequestedDir:
     LD (Pac_FacingDir), A
     RET
 
-; Out: A=1 se la direzione corrente puo' continuare, A=0 se bloccata.
-; Fra due celle la mossa e' gia' stata validata; ai nodi ricontrolla il tile.
+; Out: A=1 when the next one-pixel step keeps the complete 8x8 player box in
+; walkable maze cells, A=0 when the leading edge would enter a wall/outside.
+;
+; The two leading-edge corners are checked every frame. Normal cardinal
+; movement keeps the orthogonal axis aligned, so both points usually hit the
+; same tile; checking both makes collision robust against transient drift.
 Player_CanContinue:
-    CALL Player_IsAligned
-    OR A
-    JR Z, .ok
     LD A, (Pac_Dir)
-    CALL Player_LoadNextTileForDir
-    CALL Maze_CanMove
-    OR A
-    JR NZ, .ok
+    CP 1
+    JR Z, .up
+    CP 2
+    JR Z, .down
+    CP 3
+    JR Z, .left
+    CP 4
+    JR Z, .right
     XOR A
     RET
-.ok:
-    LD A, 1
-    RET
 
-; In: A=dir. Out: D/E=tile candidato dalla cella corrente.
+.up:
+    ; Candidate top edge after y-1: (x,y-1) and (x+7,y-1).
+    LD A, (Pac_PixelX)
+    LD D, A
+    LD A, (Pac_PixelY)
+    DEC A
+    LD E, A
+    CALL Player_PointCanMove
+    OR A
+    RET Z
+
+    LD A, (Pac_PixelX)
+    ADD A, 7
+    LD D, A
+    LD A, (Pac_PixelY)
+    DEC A
+    LD E, A
+    JP Player_PointCanMove
+
+.down:
+    ; Candidate bottom edge after y+1 is current y+8.
+    LD A, (Pac_PixelX)
+    LD D, A
+    LD A, (Pac_PixelY)
+    ADD A, 8
+    LD E, A
+    CALL Player_PointCanMove
+    OR A
+    RET Z
+
+    LD A, (Pac_PixelX)
+    ADD A, 7
+    LD D, A
+    LD A, (Pac_PixelY)
+    ADD A, 8
+    LD E, A
+    JP Player_PointCanMove
+
+.left:
+    ; Candidate left edge after x-1: (x-1,y) and (x-1,y+7).
+    LD A, (Pac_PixelX)
+    DEC A
+    LD D, A
+    LD A, (Pac_PixelY)
+    LD E, A
+    CALL Player_PointCanMove
+    OR A
+    RET Z
+
+    LD A, (Pac_PixelX)
+    DEC A
+    LD D, A
+    LD A, (Pac_PixelY)
+    ADD A, 7
+    LD E, A
+    JP Player_PointCanMove
+
+.right:
+    ; Candidate right edge after x+1 is current x+8.
+    LD A, (Pac_PixelX)
+    ADD A, 8
+    LD D, A
+    LD A, (Pac_PixelY)
+    LD E, A
+    CALL Player_PointCanMove
+    OR A
+    RET Z
+
+    LD A, (Pac_PixelX)
+    ADD A, 8
+    LD D, A
+    LD A, (Pac_PixelY)
+    ADD A, 7
+    LD E, A
+    JP Player_PointCanMove
+
+; In: D/E = screen pixel coordinate.
+; Out: A=1 walkable, A=0 wall/outside.
+; Converts the sampled pixel to maze tile coordinates then delegates to the
+; canonical maze collision source of truth.
+Player_PointCanMove:
+    LD A, D
+    SRL A
+    SRL A
+    SRL A
+    SUB Maze_OffsetX
+    LD D, A
+
+    LD A, E
+    SRL A
+    SRL A
+    SRL A
+    SUB Maze_OffsetY
+    LD E, A
+    JP Maze_CanMove
+
+; In: A=dir. Out: D/E=tile candidate from the current anchor tile.
 Player_LoadNextTileForDir:
     PUSH AF
     CALL Player_LoadTile
@@ -110,7 +214,7 @@ Player_LoadNextTileForDir:
     INC D
     RET
 
-; Out: A=1 se Pac_PixelX e Pac_PixelY sono multipli di 8, altrimenti A=0.
+; Out: A=1 when Pac_PixelX and Pac_PixelY are both multiples of 8.
 Player_IsAligned:
     LD A, (Pac_PixelX)
     AND 7
@@ -121,7 +225,7 @@ Player_IsAligned:
     LD A, 1
     RET
 
-; Out: D=x tile mappa, E=y tile mappa.
+; Out: D=x tile map, E=y tile map using the actor anchor/top-left pixel.
 Player_LoadTile:
     LD A, (Pac_PixelX)
     SRL A
@@ -136,6 +240,33 @@ Player_LoadTile:
     SUB Maze_OffsetY
     LD E, A
     RET
+
+; Out: D/E = maze tile containing the centre of the 8x8 player.
+; Pellet pickup is centre-based so entering from left/right/up/down behaves
+; symmetrically instead of depending on the top-left sprite anchor.
+Player_LoadCenterTile:
+    LD A, (Pac_PixelX)
+    ADD A, 4
+    SRL A
+    SRL A
+    SRL A
+    SUB Maze_OffsetX
+    LD D, A
+
+    LD A, (Pac_PixelY)
+    ADD A, 4
+    SRL A
+    SRL A
+    SRL A
+    SUB Maze_OffsetY
+    LD E, A
+    RET
+
+; Consume the pellet under the player centre, if present.
+; Out: A=1 when a pellet changed to empty, A=0 otherwise.
+Player_ConsumeCurrentPellet:
+    CALL Player_LoadCenterTile
+    JP Maze_ConsumePellet
 
 Player_SyncTile:
     CALL Player_LoadTile
