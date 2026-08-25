@@ -1,157 +1,196 @@
 # PAC48
 
-PAC48 is an open-source **Pac-Man–like game engine** for the **ZX Spectrum 48K**, written entirely in **Z80 assembly**. It aims to be faithful to classic 8-bit constraints while staying cleanly structured, modular, and welcoming to contributors—including AI-assisted ones.
+PAC48 is an open-source **Pac-Man-like game engine** for the **ZX Spectrum 48K**, written entirely in **Z80 assembly**.
 
-PAC48 is **not a clone** of the original Pac-Man; it is a learning-oriented and extensible framework inspired by classic arcade mechanics.
+The project aims to stay faithful to real 48K hardware constraints while remaining modular, readable, and practical for both human and AI-assisted development.
 
----
+PAC48 is **not a binary clone of the original Pac-Man**. It is a learning-oriented and extensible engine inspired by classic maze-chase mechanics.
 
-## Target Platform
+## Current state
+
+The engine currently includes:
+
+- startup control-selection menu
+- Q/A/O/P keyboard input
+- Kempston joystick input
+- Sinclair 1 / Sinclair 2 input paths
+- 28x20 maze data and collision checks
+- attribute/bitmap maze rendering
+- pixel/sub-tile player movement
+- buffered requested directions at grid intersections
+- directional 8x8 player animation
+- cell-aligned and pixel-positioned sprite drawing
+- BIN/TAP build script with versioned output
+
+Core gameplay is still incomplete: pellets are not yet consumed, there is no score/HUD, enemies, lives, complete game-state loop, frightened mode, or sound system.
+
+Several important engine fixes have been identified before feature expansion. They are tracked in the canonical backlog at [`docs/TODO.md`](docs/TODO.md).
+
+## Target platform
 
 - **Machine:** ZX Spectrum 48K
 - **CPU:** Zilog Z80
-- **Video:** Bitmap + attribute memory
-- **Input:** Keyboard (Q/A/O/P), Kempston joystick, Sinclair joystick
-- **Load address:** `ORG 32768`
+- **Video:** bitmap + 8x8 attribute cells
+- **Load/start address:** `ORG 32768`
+- **Frame pacing:** interrupt-driven `HALT` loop
+- **Compatibility goal:** real 48K hardware as well as emulators
 
-The code is designed to remain compatible with **real hardware**, not just emulators.
+No 128K memory banking or 128K-only runtime dependency should be required.
 
----
+## Repository structure
 
-## Project Structure
-
-```
+```text
 pac48/
 ├─ src/
-│  ├─ main.asm      ; Entry point and main loop
-│  ├─ config.asm    ; Global constants (ports, colors, addresses)
-│  ├─ memory.asm    ; RAM layout and variables
-│  ├─ menu.asm      ; Start menu and control selection
-│  ├─ input.asm     ; Keyboard and joystick input handling
-│  ├─ video.asm     ; Screen, attributes, rendering helpers
-│  ├─ maze.asm      ; Maze data and collision logic
-│  └─ player.asm    ; Player (Pac-like) movement and logic
-│
-├─ assets/
-│  └─ sprites.asm   ; Sprite data (planned / WIP)
-│
-├─ build/
-│  ├─ pac48.bin
-│  └─ pac48.tap
-│
-├─ tools/
-│  └─ build.sh      ; Build script
+│  ├─ main.asm       # entry point and frame orchestration
+│  ├─ config.asm     # global hardware/color constants
+│  ├─ memory.asm     # persistent runtime state
+│  ├─ menu.asm       # startup menu and control selection
+│  ├─ input.asm      # keyboard and joystick abstraction
+│  ├─ video.asm      # bitmap/attribute drawing primitives
+│  ├─ sprites.asm    # sprite data and animation tables
+│  ├─ maze.asm       # maze data, rendering, restoration, collision
+│  └─ player.asm     # pixel movement, turns, animation, drawing
 │
 ├─ docs/
-│  ├─ memory-map.md
-│  ├─ controls.md
-│  └─ roadmap.md
+│  ├─ ARCHITECTURE.md # current implementation and coordinate model
+│  └─ TODO.md         # canonical agent-friendly technical backlog
 │
-├─ AGENTS.md        ; Instructions for AI agents (Codex)
+├─ tools/
+│  └─ build.sh        # canonical build script
+│
+├─ AGENTS.md          # rules/workflow for AI coding agents
+├─ VERSION             # release version source
 ├─ README.md
 └─ .gitignore
 ```
 
-Each module has **one clear responsibility**. This structure is intentional and must be preserved.
+`build/` is generated locally and ignored by Git.
 
----
+## Documentation for contributors and agents
 
-## Build Instructions
+Use these files in this order before changing code:
+
+1. [`AGENTS.md`](AGENTS.md) — hard constraints, module ownership, register/coordinate rules, verification workflow.
+2. [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — what the current code actually does.
+3. [`docs/TODO.md`](docs/TODO.md) — prioritized tasks with stable IDs, resolution plans, acceptance criteria, and verification status.
+
+The TODO file is the source of truth for planned technical work. New findings should receive a new stable `P48-###` ID rather than being left only in commit messages or chat history.
+
+## Build
 
 ### Requirements
 
-- **sjasmplus** (Z80 assembler)
-- **Python 3** with **SkoolKit** (for `bin2tap.py`)
-- A ZX Spectrum emulator (e.g., **Fuse**) or real hardware
+- `sjasmplus`
+- Python 3 with SkoolKit's `bin2tap.py`
+- a ZX Spectrum emulator such as Fuse, or real hardware for runtime verification
 
-Example installation on a Debian-like system:
+Example Debian-like setup:
 
 ```bash
 sudo apt-get install sjasmplus
 pip install --user skoolkit
 ```
 
-### Build
+### Canonical build command
 
-From the project root:
-
-```bash
-sjasmplus src/main.asm build/pac48.bin
-bin2tap.py -o 32768 -s 32768 -c 32767 build/pac48.bin build/pac48.tap
-```
-
-Or simply (the script will create `build/` and check for dependencies):
+From the repository root:
 
 ```bash
 ./tools/build.sh
 ```
 
----
+The script creates:
+
+```text
+build/pac48.bin
+build/pac48.tap
+build/pac48-<VERSION>.tap
+```
+
+Manual equivalent:
+
+```bash
+mkdir -p build
+sjasmplus --raw=build/pac48.bin src/main.asm
+bin2tap.py -o 32768 -s 32768 -c 32767 build/pac48.bin build/pac48.tap
+```
+
+A successful assembly/TAP build is the minimum verification for any code change. Rendering, input, timing, loader, and gameplay changes should also be checked in an emulator or on real hardware.
 
 ## Controls
 
-At startup, the game displays a menu allowing you to select the control method:
+At startup PAC48 currently offers:
 
-1. Keyboard (Q = up, A = down, O = left, P = right)
+1. Q/A/O/P keyboard
 2. Kempston joystick
 3. Sinclair joystick 1
 4. Sinclair joystick 2
 
-Input handling is abstracted via a single routine (`Input_Read`) to keep gameplay code independent from the control method.
+Gameplay consumes a single direction abstraction from `Input_Read`:
 
----
+```text
+0 = none
+1 = up
+2 = down
+3 = left
+4 = right
+```
 
-## Design Goals
+A non-zero direction becomes a buffered requested direction. The player keeps moving in the active direction and accepts a requested turn when aligned to the 8x8 maze grid and the destination tile is walkable.
 
-- 48K-safe: no 128K features, no bank switching
-- Modular Z80 code: readable, commented, maintainable
-- Deterministic behavior: suitable for real hardware
-- Incremental complexity: start simple, evolve step by step
-- AI-friendly layout: designed to work well with Codex and other agents
+**Known issue:** the current Sinclair 1/2 bit-to-direction mappings require correction. See `P48-002` in [`docs/TODO.md`](docs/TODO.md).
 
----
+## Movement and rendering model
 
-## License
+PAC48 is no longer a tile-at-a-time movement prototype.
 
-This project is released under the GNU General Public License (GPL).
+The current player state includes pixel coordinates (`Pac_PixelX`, `Pac_PixelY`), active/requested directions, and tile coordinates synchronized from the pixel position. Player drawing uses `Video_DrawSpritePx`, allowing an 8x8 sprite to move across cell boundaries.
 
-You are free to:
+This creates two important ZX Spectrum concerns that are actively tracked:
 
-- study the code
-- modify it
-- redistribute it
-- build your own games on top of it
+- register/coordinate preservation during maze rendering (`P48-001`)
+- attribute-cell visibility while a pixel-positioned sprite crosses 8x8 color boundaries (`P48-004`)
 
-As long as derivative works remain GPL-compatible. See the `LICENSE` file for details.
+The current main loop also redraws the entire 28x20 maze every frame. That is intentionally tracked for replacement with localized restoration/dirty rendering in `P48-003`.
 
----
+## Near-term development order
+
+The current foundation should be stabilized before adding enemies or a larger gameplay system:
+
+1. `P48-001` — fix maze coordinate corruption across tile drawing.
+2. `P48-002` — fix Sinclair joystick mappings.
+3. `P48-003` — remove full-maze redraw from every frame.
+4. `P48-004` — make pixel movement safe across attribute cells.
+5. build the first complete gameplay loop: pellets, score, level completion, lives, then one deterministic enemy.
+
+See [`docs/TODO.md`](docs/TODO.md) for the exact plans and acceptance criteria.
+
+## Design goals
+
+- 48K-safe, with no bank switching
+- deterministic behavior suitable for real hardware
+- small, explicit Z80 interfaces
+- clear module ownership
+- incremental changes that always remain buildable
+- no unnecessary full-screen work in steady gameplay
+- AI-assisted work that leaves the repository easier for the next agent to understand
+
+## License status
+
+The repository has historically described PAC48 as GNU GPL software, but an explicit root `LICENSE` file and exact GPL version are not currently present.
+
+This is tracked as `P48-006`. The exact GPL variant should be chosen explicitly by the project owner rather than guessed by an automated contributor.
 
 ## Contributing
 
-Contributions are welcome. Please:
+Contributions are welcome. Keep changes focused, respect module boundaries, document non-obvious Z80/register assumptions, and verify every code change with the canonical build.
 
-- respect the existing module boundaries
-- keep changes focused and minimal
-- avoid mixing responsibilities across files
-- document non-obvious Z80 tricks or optimizations
-
-For AI-assisted contributions, see `AGENTS.md`.
-
----
-
-## Roadmap (short term)
-
-- Sprite-based player rendering (16×16)
-- Pellet system and scoring
-- Enemy (ghost) movement and basic AI
-- Sound effects (beeper / AY optional)
-- Performance optimizations
-
----
+AI-assisted contributors must follow [`AGENTS.md`](AGENTS.md) and keep [`docs/TODO.md`](docs/TODO.md) current.
 
 ## Why PAC48?
 
-PAC48 is both a learning project for low-level game development and a practical base for real ZX Spectrum games. It is written with care, clarity, and respect for the hardware.
+PAC48 is both a low-level game-development learning project and a practical base for experimenting with maze-chase mechanics on the original ZX Spectrum 48K architecture.
 
 Have fun hacking it.
 
