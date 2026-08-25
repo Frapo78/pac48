@@ -32,29 +32,32 @@ Priorities: `P0` unusable/correctness, `P1` gameplay/architecture, `P2` tooling/
 
 ---
 
-# Current verified baseline — 0.3.8-beta
+# Current verified baseline — 0.3.9-beta
 
 Verified code/release:
 
-- commit: `d25c5f8304f510c76be638e95dbf14d5b946b096`;
-- build ID: `D25C5F8`;
-- CI run: `32834022347` — PASS;
-- immutable TAP: `pac48-0.3.8-beta-bD25C5F8.tap`;
-- TAP SHA-256: `d3189c5be91117de6ee97f0a34ed95590b371d4614a3df23d88ca688d123d70f`;
+- commit: `be20f9eb5575119b617d0cadeabf9b0d769c9733`;
+- build ID: `BE20F9E`;
+- CI run: `32835864703` — PASS;
+- immutable TAP: `pac48-0.3.9-beta-bBE20F9E.tap`;
+- TAP SHA-256: `471eb8c6cf8cf00a1d04191d04153578218ce6b023bb29067bbfdd1fff57f822`;
 - fresh-48K TAP load reaches `$8000`;
 - assembly: 0 errors / 0 warnings;
 - control/runtime/render/performance harnesses: PASS;
-- `Render_Commit`: 4341 / 5497 / 9184 T-states for dirty1 / dirty2 / dirty4.
+- `Render_Commit`: 4341 / 5497 / 9184 T-states for dirty1 / dirty2 / dirty4;
+- BIN: 9128 bytes, 19544-byte conservative headroom.
 
-0.3.8 also introduces the first arcade-inspired 4:3 maze candidate:
+0.3.9 gameplay/maze baseline:
 
 - 28 x 20 logical cells, preserving 8x8 tiles;
-- horizontally symmetric;
+- horizontally symmetric arcade-inspired landscape composition;
 - Pac start below centre at `(13,15)`, initially facing left;
-- 234 player-reachable cells;
-- 198 normal pellets, all reachable;
+- 246 player-reachable cells;
+- 210 normal pellets, all reachable;
 - zero accidental player dead ends;
-- topology guard runs in every canonical build.
+- functional centre tunnel at row 9, wrapping `(0,9) <-> (27,9)`;
+- topology guard models the tunnel edge adjacency;
+- perpendicular turns use a +/-3 pixel turn window with automatic axis centering instead of exact `%8==0` only.
 
 External research and design rationale are canonicalized in `docs/PACMAN_REFERENCE.md`.
 
@@ -62,11 +65,11 @@ External research and design rationale are canonicalized in `docs/PACMAN_REFEREN
 
 # ACTIVE MILESTONE — Arcade-feel foundation
 
-Recommended order after owner V3 on the 0.3.8 maze:
+Recommended order after owner V3 on 0.3.9:
 
-`P48-030 V3 -> P48-027/P48-019 V3 -> P48-031 -> P48-034 -> P48-032 -> P48-033/P48-039 -> P48-035 -> P48-036/P48-037 -> P48-038 -> broader P48-009`
+`P48-030 V3 -> P48-027/P48-019/P48-040 V3 -> P48-031 V3 -> P48-034 -> P48-032 -> P48-033/P48-039 -> P48-035 -> P48-036/P48-037 -> P48-038 -> broader P48-009`
 
-The key change after Pac-Man arcade research is that `P48-031` supersedes further patches around exact 8-pixel turn alignment. The final control model should reproduce arcade-style pre-turn/centering rather than keep adding special cases to `%8 == 0`.
+The exact-node steering model is no longer the target architecture. `P48-031` introduces a bounded arcade-style turn window and auto-centering. Future control work must extend/test that model rather than reintroduce an exact `%8==0` gate.
 
 ---
 
@@ -89,20 +92,21 @@ The key change after Pac-Man arcade research is that `P48-031` supersedes furthe
 
 ## P48-027 — Remove unreachable pellet islands and enforce connectivity
 - **Status:** `VERIFY` | **Priority:** `P0` | **Incident:** `INC-2026-011`
-- **Implemented in:** `14e91f68b4c77b681adafb1d21a45f8cb599026c` + fixture alignment `d25c5f8304f510c76be638e95dbf14d5b946b096`
+- **Implemented:** 0.3.8 topology replacement, extended by 0.3.9 functional tunnel.
 
-Implemented:
-- replaced the prototype topology with the 0.3.8 connected landscape maze;
-- `tools/check_maze_topology.py` flood-fills from canonical Pac start;
+Implemented/guarded:
+- flood-fill from canonical Pac start;
 - every normal pellet must be player-reachable;
 - current classic layout must remain horizontally symmetric;
-- accidental player dead ends fail the build.
+- accidental player dead ends fail the build;
+- tunnel endpoints are graph-adjacent in validation.
 
-Evidence:
-- 234 player-reachable cells;
-- 198 reachable pellets;
+Current evidence:
+- 246 player-reachable cells;
+- 210 reachable pellets;
 - 0 unreachable pellets;
 - 0 dead ends;
+- functional tunnel `(0,9)<->(27,9)`;
 - canonical CI PASS.
 
 Remaining:
@@ -118,7 +122,7 @@ Implemented and guarded:
 - stale-turn cancellation;
 - held-direction fallback at blocked diagonal dead ends.
 
-This fixes concrete stalls but owner feedback still describes overall cornering as sluggish. Do **not** keep extending this exact-alignment model indefinitely; final cornering is `P48-031`.
+This remains the input-intent layer. Actual geometric cornering is now owned by `P48-031`.
 
 ## P48-029 — Start Kempston from Kempston FIRE in menu
 - **Status:** `VERIFY` | **Priority:** `P1`
@@ -127,24 +131,26 @@ This fixes concrete stalls but owner feedback still describes overall cornering 
 ## P48-030 — Readable version/build stamp in gameplay
 - **Status:** `VERIFY` | **Priority:** `P1` | **Incident:** `INC-2026-013`
 - Uses Spectrum ROM printable glyphs from `$3D00` after subtracting ASCII 32; generated version+commit identity; immutable TAP naming.
-- [ ] owner V3 confirms the 0.3.8 stamp is clearly readable.
+- 0.3.9 expected stamp: `V0.3.9 BBE20F9E`.
+- [ ] owner V3 confirms the stamp is clearly readable.
 
 ## P48-019 — Arcade-inspired 4:3 maze topology
 - **Status:** `VERIFY` | **Priority:** `P1` | **Depends on:** `P48-027`
 - **Reference:** `docs/PACMAN_REFERENCE.md`
 
-Implemented first candidate in 0.3.8:
-- keep original-class 28-tile width and 8x8 cells;
+Implemented:
+- retain original-class 28-tile width and 8x8 cells;
 - compress vertical structure from the arcade's 31 maze rows to 20 Spectrum rows instead of shrinking tiles;
-- retain recognizable upper blocks, central reserved structure, symmetric lower routes and below-centre Pac spawn;
-- side tunnel silhouette is not faked as a dead end: functional warp metadata is deferred to `P48-034`.
+- recognizable upper blocks, central reserved structure, symmetric lower routes and below-centre Pac spawn;
+- 0.3.9 opens the centre-height side corridor and gives it functional wrap via `P48-040`.
 
 Acceptance:
 - [x] static topology/connectivity guard PASS;
 - [x] no unreachable pellets/dead ends;
 - [x] horizontal symmetry;
-- [ ] owner V3 accepts landscape composition;
-- [ ] future ghost-house/tunnel/power-pellet metadata added under `P48-034/021/022`.
+- [x] functional centre tunnel exists;
+- [ ] owner V3 accepts landscape composition and tunnel presentation;
+- [ ] ghost-house/power-pellet metadata added under `P48-034/021/022`.
 
 ## P48-020 — Score/high-score HUD and reserved bands
 - **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-019` V3
@@ -162,35 +168,45 @@ Acceptance:
 
 # Arcade-research-derived tasks
 
-## P48-031 — Replace exact-node turning with true arcade cornering
-- **Status:** `READY` | **Priority:** `P0`
-- **Files:** `src/input.asm`, `src/player.asm`, state memory, control harness
+## P48-031 — Replace exact-node turning with arcade turn-window cornering
+- **Status:** `VERIFY` | **Priority:** `P0`
+- **Files:** `src/config.asm`, `src/player.asm`, `tests/control_harness.asm`
+- **Incident:** `INC-2026-015`
 - **Reference:** `docs/PACMAN_REFERENCE.md`, Pac-Man Dossier cornering analysis
 - **Supersedes final control scope of:** `P48-028`
+- **Implemented in:** `6276c675e162a51e3e0a7975394e9e7a2963fac5`, tests completed in `be20f9eb5575119b617d0cadeabf9b0d769c9733`
 
-### Problem
-The current model still fundamentally waits for exact 8-pixel alignment for 90-degree turns. The original arcade allows a requested perpendicular turn around the junction and recentres the actor into the destination corridor. This is the main remaining source of "sluggish" steering.
+### Implemented
 
-### Plan
-- represent current vector and requested/next vector independently;
-- define a bounded pre-turn window before junction centre;
-- begin a legal requested corner as soon as it enters that window;
-- auto-centre the orthogonal coordinate onto the new corridor;
-- support a bounded post-turn completion phase if required by the reference behavior;
-- keep collision-box wall safety authoritative;
-- use symmetric rules for all four directions/devices;
-- remove obsolete exact-node special cases after tests pass.
+- perpendicular requests no longer require exact 8-pixel node alignment;
+- `Pac_TurnWindow=3` permits the closest legal node up to three pixels before or after centre;
+- when the requested branch is legal, the old travel axis is snapped exactly to the node before the new direction advances;
+- the new corridor therefore always starts centered, preventing accumulated off-axis states from blocking later turns;
+- 180-degree reversals remain immediate;
+- full-edge collision remains authoritative after the turn;
+- successful snap also synchronizes tile/pellet state before continuing.
 
-### Acceptance
-- [ ] holding a turn before an opening takes the first legal opening without a perceptible pause;
-- [ ] late-but-valid input around the opening can still complete the turn;
-- [ ] repeated diagonal steering feels continuous rather than stop/start;
-- [ ] no wall clipping;
-- [ ] deterministic pre-turn/post-turn harnesses pass;
-- [ ] owner V3 describes controls as arcade-like/immediate.
+### Deterministic evidence
+
+The Z80 control harness verifies:
+- pre-turn from three pixels before a junction;
+- post-turn recovery from two pixels after the junction;
+- four-pixel midpoint remains outside the +/-3 window;
+- turned actor is exactly centered on the new corridor axis;
+- existing reversal/dead-end regressions still pass.
+
+CI run `32835864703`: PASS.
+
+### Remaining acceptance
+
+- [x] deterministic pre-turn/post-turn harnesses pass;
+- [x] auto-centering is asserted after a turn;
+- [x] no wall clipping regression in runtime harness;
+- [ ] owner V3 confirms first-opening turns are materially more fluid;
+- [ ] owner V3 confirms Pac no longer becomes unable to turn in the next corridor.
 
 ## P48-032 — Add 50 Hz actor movement-pattern engine
-- **Status:** `READY` | **Priority:** `P1` | **Depends on:** `P48-031`
+- **Status:** `READY` | **Priority:** `P1` | **Depends on:** `P48-031` V3
 - Use rotating bit patterns to decide per-frame one-pixel movement rather than fractional arithmetic.
 - Define data-driven patterns for Pac normal/energized and ghost normal/frightened/tunnel/Elroy.
 - Preserve arcade speed ratios/feel but derive Spectrum 50 Hz patterns rather than copying ~60 Hz values blindly.
@@ -208,7 +224,7 @@ The current model still fundamentally waits for exact 8-pixel alignment for 90-d
 - Keep geometry/player walkability separate from collectible state and special flags.
 - Add explicit metadata for tunnel/warp endpoints, ghost tunnel slow zones, ghost house, door, actor spawns, energizers, fruit and arcade no-UP ghost intersections.
 - Extend topology validator for player-only/ghost-only regions instead of weakening generic connectivity checks.
-- Functional side tunnels belong here.
+- The first functional player tunnel is implemented by `P48-040`; migrate its hard constants into the metadata layer here.
 
 ## P48-035 — Common tile-target ghost navigation core
 - **Status:** `BLOCKED` | **Priority:** `P1` | **Depends on:** `P48-031`, `P48-034`
@@ -241,6 +257,29 @@ The current model still fundamentally waits for exact 8-pixel alignment for 90-d
   - tunnel/warp + movement-pattern skip.
 - Once an event order is selected, future agents must not silently reorder it.
 
+## P48-040 — Functional centre side-tunnel wrap
+- **Status:** `VERIFY` | **Priority:** `P1`
+- **Files:** `src/config.asm`, `src/maze.asm`, `src/player.asm`, `tools/check_maze_topology.py`, `tests/control_harness.asm`
+- **Reference:** `docs/PACMAN_REFERENCE.md`
+- **Implemented in:** `be20f9eb5575119b617d0cadeabf9b0d769c9733`
+
+Implemented:
+- maze row 9 opens to both side edges;
+- left/right endpoints are explicit canonical constants;
+- moving LEFT from `(0,9)` wraps to `(27,9)` and vice versa;
+- player remains in valid maze coordinates; no out-of-range collision exception is needed;
+- topology flood-fill treats tunnel endpoints as adjacent;
+- both wrap directions are covered by Z80 control tests.
+
+Evidence:
+- 246 reachable cells / 210 reachable pellets / zero dead ends;
+- left->right and right->left wrap tests PASS;
+- canonical CI/TAP load PASS.
+
+Remaining:
+- [ ] owner V3 confirms tunnel is visually obvious and wrap feels correct;
+- [ ] later `P48-034` adds metadata/ghost tunnel-speed semantics rather than hard-coding more tunnel behavior.
+
 ---
 
 # Existing foundation tasks
@@ -272,7 +311,7 @@ The current model still fundamentally waits for exact 8-pixel alignment for 90-d
 
 ## P48-009 — First complete gameplay loop
 - **Status:** `BLOCKED` | **Priority:** `P2`
-- Pellet consumption exists. Remaining gameplay is now decomposed into `P48-031..039`, plus score/lives/level completion/sound.
+- Pellet consumption exists. Remaining gameplay is decomposed into `P48-031..040`, plus score/lives/level completion/sound.
 
 ## P48-010 — Dedicated render module / prepare-commit phases
 - **Status:** `VERIFY` | **Priority:** `P1`
