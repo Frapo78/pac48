@@ -1,437 +1,489 @@
 # PAC48 Technical TODO
 
-This file is the canonical work queue for PAC48.
+This is the canonical work queue for PAC48.
 
-It is intentionally structured so that human contributors and AI coding agents can pick up work without reconstructing project history from commits or chat logs.
+Read in this order before implementation:
+
+1. `AGENTS.md`
+2. `docs/ARCHITECTURE.md`
+3. `docs/adr/0001-rendering-architecture.md`
+4. this file
 
 ## Agent workflow
 
-Before changing code:
-
-1. Read `AGENTS.md`.
-2. Read `docs/ARCHITECTURE.md`.
-3. Read this file from the top and select the highest-priority task that is not blocked.
-4. Inspect every file listed in the task before editing.
-5. Keep the change limited to the selected task unless another task is an unavoidable dependency.
-
-While working:
-
-- Keep the task ID in commit/PR messages when practical, for example `P48-001: preserve maze coordinates during tile drawing`.
-- Do not change a task to `DONE` merely because code was written.
-- If implementation is complete but required verification cannot be performed, set it to `VERIFY` and record exactly what is missing.
-- If a new bug or prerequisite is discovered, add a new task with a new stable ID. Do not silently broaden an existing task.
-- Never reuse or renumber task IDs, including completed or cancelled tasks.
-
-After changing code:
-
-1. Run `./tools/build.sh` at minimum.
-2. Perform emulator or real-hardware verification when the task changes timing, rendering, controls, loader behavior, or gameplay.
-3. Update the task's checkboxes and `Status`.
-4. Add concise evidence under `Verification notes`.
-5. Update `docs/ARCHITECTURE.md` or `AGENTS.md` if an architectural assumption changed.
+- Select the highest-priority unblocked task unless the user explicitly requests another.
+- Inspect every listed file before editing.
+- Keep scope within the task.
+- Use the stable `P48-###` ID in commits/PRs when practical.
+- Never renumber or reuse IDs.
+- If new work is discovered, create a new task rather than silently expanding scope.
+- Run `./tools/build.sh` for every code change.
+- Rendering, timing, input, loader and gameplay changes require emulator/real-hardware verification when their acceptance criteria say so.
+- Code written but not fully verified is `VERIFY`, not `DONE`.
 
 ## Status values
 
-- `READY` — understood and ready to implement.
-- `IN_PROGRESS` — actively being implemented.
-- `BLOCKED` — cannot proceed until the listed dependency is resolved.
-- `VERIFY` — implementation exists but required verification is incomplete.
-- `DONE` — implementation and required verification are complete.
-- `WONTFIX` — intentionally not being implemented; explain why.
+- `READY` - understood and ready.
+- `IN_PROGRESS` - actively being implemented.
+- `BLOCKED` - dependency or decision prevents work.
+- `VERIFY` - implementation exists but verification is incomplete.
+- `DONE` - implementation and required verification complete.
+- `WONTFIX` - intentionally not implemented, with reason.
 
-## Priority values
+## Priorities
 
-- `P0` — correctness/corruption issue; fix before feature development.
-- `P1` — major correctness, compatibility, or gameplay-foundation issue.
-- `P2` — important maintainability, performance, or development-quality work.
-- `P3` — enhancement or later milestone.
+- `P0` - correctness/corruption; fix first.
+- `P1` - architecture/compatibility/gameplay foundation.
+- `P2` - maintainability, tooling, profiling, development quality.
+- `P3` - later enhancement.
+
+## Recommended execution order
+
+`P48-001 -> P48-002 -> P48-010 -> P48-011 -> P48-012 -> P48-003 -> P48-004 -> P48-008/P48-014 -> P48-009`
+
+`P48-006` and `P48-007` can be completed independently when convenient.
 
 ---
 
-## P48-001 — Preserve maze coordinates across attribute drawing
+## P48-001 - Preserve maze coordinates across attribute drawing
 
 - **Status:** `READY`
 - **Priority:** `P0`
 - **Type:** rendering correctness
-- **Owner:** unassigned
 - **Files:** `src/maze.asm`, `src/video.asm`
 - **Depends on:** none
 
 ### Problem
 
-`Maze_Draw` and `Maze_DrawCell` draw a tile attribute and then immediately draw the bitmap/sprite for the same maze coordinates.
+`Maze_DrawTileAtOffset` calls `Video_DrawTile`, which uses `DE` internally. Callers then reuse `D/E` as if the maze coordinates were preserved. This can make the bitmap half of a maze-cell draw use corrupted coordinates.
 
-`Maze_DrawTileAtOffset` calls `Video_DrawTile`. `Video_DrawTile` uses `DE` internally to build `ATTR_ADDR`, so it returns with `DE` no longer containing the caller's coordinates. The maze code then reuses `D/E` as if the original coordinates were still present.
+### Resolution
 
-This can make pellet/empty bitmap drawing use corrupted coordinates and can cause writes to the wrong bitmap location.
+1. Define/document the register contract of both routines.
+2. Make `Maze_DrawTileAtOffset` preserve caller `DE`, or otherwise change every caller to a documented safe convention.
+3. Audit every `Video_DrawTile` call that relies on `DE` afterwards.
+4. Keep this a minimal correctness fix; do not combine with renderer migration.
 
-### Resolution plan
+### Acceptance
 
-Use the smallest interface-safe fix first:
-
-1. Make `Maze_DrawTileAtOffset` preserve the caller's original `DE` around its coordinate conversion and `Video_DrawTile` call.
-2. Document the actual clobbered/preserved registers for both `Maze_DrawTileAtOffset` and `Video_DrawTile`.
-3. Audit other call sites that invoke `Video_DrawTile` and then reuse `DE`.
-4. Do not perform a broad renderer rewrite as part of this task.
-
-A possible minimal implementation shape is to save `DE` before offset conversion and restore it before returning. The exact register strategy should be chosen after inspecting the current routines and cycle impact.
-
-### Acceptance criteria
-
-- [ ] `Maze_DrawTileAtOffset` returns with the caller's maze coordinates intact in `DE`.
-- [ ] `Maze_Draw` draws attribute and bitmap using the same intended cell coordinates.
-- [ ] `Maze_DrawCell` does the same.
-- [ ] Routine comments document register behavior.
-- [ ] `./tools/build.sh` succeeds.
-- [ ] Maze/pellet rendering is visually checked in an emulator or on real hardware.
+- [ ] attribute and bitmap for a cell use identical intended coordinates
+- [ ] `Maze_DrawCell` is safe
+- [ ] register contracts are documented
+- [ ] `./tools/build.sh` passes
+- [ ] maze/pellets visually verified
 
 ### Verification notes
 
-Not yet implemented.
+Not implemented.
 
 ---
 
-## P48-002 — Correct Sinclair 1 and Sinclair 2 joystick directions
+## P48-002 - Correct Sinclair 1 and Sinclair 2 directions
 
 - **Status:** `READY`
 - **Priority:** `P0`
 - **Type:** input correctness
-- **Owner:** unassigned
-- **Files:** `src/input.asm`, optionally `docs/controls.md` if created
+- **Files:** `src/input.asm`
 - **Depends on:** none
 
 ### Problem
 
-The current Sinclair joystick direction comments and returned direction values do not match the standard Interface 2 key mapping.
+Current Sinclair direction mappings do not match the Interface 2 key layout.
 
-Expected mapping:
+Expected:
 
-- Sinclair 1 / keys `6 7 8 9 0`: `6=left`, `7=right`, `8=down`, `9=up`, `0=fire`.
-- Sinclair 2 / keys `1 2 3 4 5`: `1=left`, `2=right`, `3=down`, `4=up`, `5=fire`.
+- Sinclair 1 (`6 7 8 9 0`): `6=left`, `7=right`, `8=down`, `9=up`, `0=fire`
+- Sinclair 2 (`1 2 3 4 5`): `1=left`, `2=right`, `3=down`, `4=up`, `5=fire`
 
-The current code maps these bits to different directions, so menu modes 3 and 4 do not behave correctly.
+### Resolution
 
-### Resolution plan
+Correct only bit-to-direction mapping. Keep `Input_Mode` values and public direction enum unchanged.
 
-1. Keep `Input_Mode` values unchanged.
-2. Correct only the bit-to-direction mapping inside `.read_sinclair1` and `.read_sinclair2`.
-3. Keep the public `Input_Read` enum unchanged: `0=none`, `1=up`, `2=down`, `3=left`, `4=right`.
-4. Add or update concise comments showing physical key, direction, and active-low behavior.
-5. Verify all four directions for both Sinclair modes.
+### Acceptance
 
-### Acceptance criteria
-
-- [ ] Sinclair 1 returns the correct direction for keys 6/7/8/9.
-- [ ] Sinclair 2 returns the correct direction for keys 1/2/3/4.
-- [ ] Keyboard Q/A/O/P behavior is unchanged.
-- [ ] Kempston behavior is unchanged.
-- [ ] `./tools/build.sh` succeeds.
-- [ ] Both Sinclair modes are manually checked in an emulator or on compatible hardware.
+- [ ] both Sinclair modes return correct four directions
+- [ ] Q/A/O/P unchanged
+- [ ] Kempston unchanged
+- [ ] build passes
+- [ ] manual control smoke test passes
 
 ### Verification notes
 
-Not yet implemented.
+Not implemented.
 
 ---
 
-## P48-003 — Remove full-maze redraw from every gameplay frame
+## P48-003 - Remove full-maze redraw from gameplay frames
 
-- **Status:** `READY`
+- **Status:** `BLOCKED`
 - **Priority:** `P1`
-- **Type:** performance / rendering architecture
-- **Owner:** unassigned
-- **Files:** `src/main.asm`, `src/player.asm`, `src/maze.asm`, possibly `src/video.asm`
-- **Depends on:** `P48-001`
+- **Type:** rendering architecture
+- **Files:** `src/main.asm`, `src/maze.asm`, `src/render.asm`, `src/player.asm`
+- **Depends on:** `P48-010`, `P48-011`, `P48-012`
 
 ### Problem
 
-`MainLoop` currently calls `Maze_Draw` every frame. The maze is 28x20, so 560 cells are rebuilt repeatedly before drawing the player.
+Current `MainLoop` redraws all 560 maze cells every frame. This is the wrong scaling model for a mostly static single-screen maze and is currently compensating for destructive actor drawing.
 
-This is wasteful on a 48K Spectrum and will leave very little timing headroom for pellet logic, HUD, enemies, collisions, game states, and sound.
+### Resolution
 
-The code already contains partial dirty-rendering primitives (`Player_Erase`, `Player_RestoreBlock3x3`, `Maze_DrawCell`) that are not currently used by the main loop.
+Implement the dirty-restoration model from ADR 0001:
 
-### Resolution plan
+1. draw the maze once at level start;
+2. track cells touched by the displayed actor sprites;
+3. on next commit restore only those cells from current `Maze_Map` state;
+4. include cells whose persistent state changed (for example consumed pellets);
+5. draw new actors;
+6. record their touched cells for the next frame.
 
-Implement incrementally rather than replacing the renderer wholesale:
+Start with a bounded short list and simple de-duplication. Do not introduce a full framebuffer.
 
-1. Keep the initial `Maze_Draw` during game setup.
-2. Before moving the player, restore only the cells covered by the player's previous pixel position.
-3. Update input and player position.
-4. Draw the player at the new pixel position.
-5. Redraw only maze cells whose persistent state changes, such as a consumed pellet.
-6. Measure or at least reason about the worst-case number of restored cells per frame.
-7. Keep a temporary way to compare the optimized result against the full redraw during development if useful, but do not leave two permanent rendering paths without justification.
+### Acceptance
 
-### Acceptance criteria
-
-- [ ] `Maze_Draw` is not called on every gameplay frame.
-- [ ] The initial maze is still rendered correctly.
-- [ ] Moving Pac does not leave bitmap trails.
-- [ ] Old Pac pixels are restored from current maze state.
-- [ ] No visible maze corruption occurs at cell boundaries.
-- [ ] `./tools/build.sh` succeeds.
-- [ ] Movement is visually verified for horizontal and vertical travel and turns.
+- [ ] `Maze_Draw` is absent from normal per-frame gameplay path
+- [ ] player leaves no trails
+- [ ] dirty cells restore current pellet/empty state
+- [ ] overlapping dirty cells are not restored redundantly enough to break timing
+- [ ] horizontal/vertical/turning movement visually correct
+- [ ] build passes
+- [ ] cycle-aware verification records common/worst dirty count
 
 ### Verification notes
 
-Not yet implemented.
+Blocked on new render pipeline.
 
 ---
 
-## P48-004 — Make pixel movement safe across ZX attribute cells
+## P48-004 - Stabilize attribute ownership for moving actors
 
-- **Status:** `READY`
+- **Status:** `BLOCKED`
 - **Priority:** `P1`
-- **Type:** rendering / ZX attribute handling
-- **Owner:** unassigned
-- **Files:** `src/maze.asm`, `src/video.asm`, `src/player.asm`
-- **Depends on:** `P48-001`; coordinate work should be evaluated together with `P48-003`
+- **Type:** Spectrum attribute policy
+- **Files:** `src/maze.asm`, `src/render.asm`, `src/video.asm`
+- **Depends on:** `P48-012`, `P48-003`
 
 ### Problem
 
-`Video_DrawSpritePx` allows an 8x8 sprite to be shifted across byte/cell boundaries, while ZX Spectrum color attributes remain 8x8-cell based.
+Spectrum colors belong to 8x8 attribute cells. Per-sprite attribute writes create color clash and restoration problems when actors move across cells.
 
-`Maze_AttrPellet` uses yellow ink on black paper, but `Maze_AttrEmpty` currently uses black ink on black paper. After pellets become consumable, Pac can therefore cross an empty path cell whose attribute makes his bitmap invisible or partially black. Similar boundary artifacts must be considered whenever a shifted sprite spans multiple attribute cells.
+### Resolution
 
-### Resolution plan
+Follow ADR 0001 baseline:
 
-Prefer the cheapest stable strategy compatible with the current art:
+1. moving actors do not write attributes in the hot path;
+2. walkable cells use an attribute that keeps actor pixels visible;
+3. wall attributes remain maze-owned;
+4. dirty restoration restores persistent maze attributes;
+5. distinct ghost colors are deferred to a separate explicit extension.
 
-1. Give all walkable corridor cells a compatible player-visible ink/paper combination even when their bitmap is empty. For the current yellow player, yellow ink on black paper is the natural baseline.
-2. Keep wall attributes independent.
-3. Verify shifted horizontal and vertical frames at every `x mod 8` / `y mod 8` phase.
-4. Only add multi-attribute sprite painting if a uniform walkable-cell attribute is insufficient for future graphics.
-5. Ensure dirty restoration from `P48-003` restores the correct maze attributes after the player leaves.
+### Acceptance
 
-### Acceptance criteria
-
-- [ ] Pac remains visible while crossing pellet and empty corridor cells.
-- [ ] No new permanent color trails are left behind.
-- [ ] Walls retain their intended attributes.
-- [ ] Horizontal and vertical sub-cell movement is visually checked.
-- [ ] `./tools/build.sh` succeeds.
+- [ ] actors remain visible at every sub-cell X/Y phase
+- [ ] no permanent attribute trails
+- [ ] walls retain correct colors
+- [ ] no actor routine casually owns attribute memory
+- [ ] build and visual tests pass
 
 ### Verification notes
 
-Not yet implemented.
+Blocked on masked renderer/dirty restore.
 
 ---
 
-## P48-005 — Synchronize documentation with the current pixel-movement engine
+## P48-005 - Synchronize documentation with pixel movement
 
 - **Status:** `DONE`
 - **Priority:** `P1`
 - **Type:** documentation
-- **Owner:** documentation pass 2026-08-25
 - **Files:** `README.md`, `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/TODO.md`
-- **Depends on:** none
 
-### Problem
+### Completed
 
-Previous documentation described the player model as tile-based and the sprite renderer as cell-aligned only. The current code already uses `Pac_PixelX`, `Pac_PixelY`, `Pac_ReqDir`, grid-aligned direction changes, and `Video_DrawSpritePx` for sub-cell movement.
-
-The old README also listed planned directories/files as if they already existed.
-
-### Resolution completed
-
-- Documentation now treats pixel/sub-tile movement as the current design.
-- The current real repository structure is documented.
-- `AGENTS.md` points agents to this backlog before implementation work.
-- Known findings are tracked as stable task IDs instead of stale prose bullets.
-
-### Acceptance criteria
-
-- [x] Pixel movement is documented as current behavior.
-- [x] `Pac_ReqDir` and grid-aligned direction changes are documented.
-- [x] `Video_DrawSpritePx` is documented.
-- [x] README structure reflects files that actually exist or clearly marks generated paths.
-- [x] AI workflow points to this TODO file.
+- [x] pixel/sub-tile movement documented
+- [x] `Pac_ReqDir` documented
+- [x] current repository structure documented
+- [x] agent workflow points at canonical TODO
 
 ### Verification notes
 
-Documentation-only change; no executable code changed.
+Documentation-only.
 
 ---
 
-## P48-006 — Add an explicit license file and exact GPL identifier
+## P48-006 - Add exact GPL license file
 
-- **Status:** `READY`
+- **Status:** `BLOCKED`
 - **Priority:** `P1`
-- **Type:** project/legal metadata
-- **Owner:** unassigned
+- **Type:** legal/project metadata
 - **Files:** `LICENSE`, `README.md`
-- **Depends on:** owner decision on exact license variant
+- **Depends on:** project owner chooses exact GPL variant
 
-### Problem
+### Resolution
 
-README historically stated that PAC48 is released under the GNU GPL and referred to a `LICENSE` file, but no license file currently exists in the repository and no exact GPL version is pinned.
+After explicit owner choice (for example `GPL-3.0-only` or `GPL-3.0-or-later`), add canonical license text and make README match exactly.
 
-### Resolution plan
-
-1. Project owner chooses the exact license, for example GPL-3.0-only or GPL-3.0-or-later.
-2. Add the canonical license text as `LICENSE`.
-3. Update README to use the exact SPDX-style identifier/name.
-4. Do not let an AI agent guess the license variant on behalf of the owner.
-
-### Acceptance criteria
-
-- [ ] Exact GPL variant explicitly approved by project owner.
-- [ ] `LICENSE` exists at repository root.
-- [ ] README names the same exact license.
-
-### Verification notes
-
-Blocked only on the owner's license-version choice; implementation itself is trivial.
+Do not let an agent guess the license variant.
 
 ---
 
-## P48-007 — Make VERSION the single source of release version
+## P48-007 - Make VERSION the single release-version source
 
 - **Status:** `READY`
 - **Priority:** `P2`
-- **Type:** build / maintainability
-- **Owner:** unassigned
-- **Files:** `VERSION`, `tools/build.sh`, `src/menu.asm`, generated include if adopted
-- **Depends on:** none
+- **Type:** build maintainability
+- **Files:** `VERSION`, `tools/build.sh`, `src/menu.asm`
 
 ### Problem
 
-The repository has a canonical `VERSION` file (`0.3.4-beta` at the time this task was created), but the same version string is also hard-coded in `src/menu.asm`.
+`VERSION` and the menu currently duplicate the version string.
 
-The two values can drift on the next release.
+### Resolution
 
-### Resolution plan
+Generate an assembly include/string from `VERSION` during the build so a clean checkout edits the version in one place only.
 
-Prefer a build-generated assembly include:
+### Acceptance
 
-1. Keep `VERSION` as the human-edited source of truth.
-2. Have `tools/build.sh` generate a small file under `build/` (or another intentionally generated path) containing an assembly string/constant derived from `VERSION`.
-3. Include that generated symbol from the menu/version display path without changing the load address.
-4. Ensure a clean build creates everything it needs from a fresh checkout.
-5. Do not require developers to edit two version locations manually.
-
-### Acceptance criteria
-
-- [ ] Version is edited in one source file only.
-- [ ] Menu displays the version from that source.
-- [ ] Clean `./tools/build.sh` succeeds.
-- [ ] Generated version data is ignored by Git if appropriate.
-
-### Verification notes
-
-Not yet implemented.
+- [ ] one human-edited version source
+- [ ] menu uses generated value
+- [ ] clean build succeeds
 
 ---
 
-## P48-008 — Establish a repeatable verification baseline
+## P48-008 - Establish repeatable verification baseline
 
 - **Status:** `READY`
 - **Priority:** `P2`
-- **Type:** development quality
-- **Owner:** unassigned
-- **Files:** `tools/`, documentation, optionally emulator/test scripts
-- **Depends on:** none
+- **Type:** testing/tooling
+- **Files:** `tools/`, docs
 
-### Problem
+### Resolution
 
-Historical PRs frequently recorded `Testing: not run`, and the project has no repeatable regression checks beyond assembly/TAP generation.
+1. Keep `./tools/build.sh` mandatory.
+2. Add deterministic structural checks (maze size, generated-asset validity, output existence, memory-size limits).
+3. Document a standard 48K emulator smoke test.
+4. Report exactly which verification layers ran.
 
-For low-level Z80 work, a successful assembly is necessary but does not prove rendering, control mapping, loader behavior, or timing correctness.
+### Acceptance
 
-### Resolution plan
-
-Build this in layers:
-
-1. Treat `./tools/build.sh` as mandatory for every code change.
-2. Add lightweight static checks that are deterministic and useful, such as maze byte count (`Maze_Width * Maze_Height`) and required output existence.
-3. Document a standard Fuse/emulator smoke-test sequence covering load, menu, each input mode, maze render, horizontal/vertical movement, and turning.
-4. If automation is added later, keep it compatible with local development and do not make emulator-only behavior part of the game runtime.
-
-### Acceptance criteria
-
-- [ ] Mandatory local build procedure is documented.
-- [ ] At least one deterministic structural regression check exists beyond mere output-file existence.
-- [ ] Emulator smoke-test checklist is documented.
-- [ ] Contributors can report exactly which verification layers were completed.
-
-### Verification notes
-
-Not yet implemented.
+- [ ] structural regression checks exist
+- [ ] emulator smoke-test checklist exists
+- [ ] generated sprite assets are validated once P48-011 lands
 
 ---
 
-## P48-009 — Implement the first complete gameplay loop
+## P48-009 - Implement first complete gameplay loop
 
 - **Status:** `BLOCKED`
 - **Priority:** `P2`
 - **Type:** gameplay milestone
-- **Owner:** unassigned
-- **Files:** expected to span `src/maze.asm`, `src/memory.asm`, `src/player.asm`, `src/main.asm`, `src/video.asm`; new module only when justified
-- **Depends on:** `P48-001`, `P48-002`, `P48-003`, `P48-004`
+- **Depends on:** `P48-001`, `P48-002`, `P48-003`, `P48-004`, `P48-012`
 
 ### Goal
 
-Move PAC48 from an engine movement demo to a small but complete playable loop without prematurely implementing complex ghost AI.
+After rendering foundation is stable, create child tasks for:
 
-### Recommended sequence
+1. pellet consumption
+2. remaining-pellet count
+3. score/HUD
+4. level complete
+5. lives
+6. one deterministic enemy
+7. actor collision/life loss
+8. game over/restart
+9. further enemy personalities
+10. energizers/frightened mode and sound
 
-Create child tasks with new IDs when implementation starts. Suggested order:
-
-1. Pellet consumption owned by maze logic.
-2. Remaining-pellet count.
-3. Score state and minimal HUD.
-4. Level-complete state when pellet count reaches zero.
-5. Lives state.
-6. One deterministic enemy using maze collision.
-7. Player/enemy collision and life loss.
-8. Game over and restart flow.
-9. Additional enemies/personality only after one enemy is stable.
-10. Energizers/frightened mode and sound after the core loop is verified.
-
-### Acceptance criteria
-
-- [ ] Child tasks exist before broad gameplay work begins.
-- [ ] Each child task is independently buildable/verifiable.
-- [ ] Core engine fixes are complete before feature expansion.
-
-### Verification notes
-
-Blocked on rendering/input foundation work.
+Do not begin broad gameplay work before the renderer migration is verified.
 
 ---
 
-## Adding new tasks
-
-Copy this template and allocate the next unused `P48-###` ID:
-
-```md
-## P48-### — Short imperative title
+## P48-010 - Introduce dedicated render module and prepare/commit frame phases
 
 - **Status:** `READY`
-- **Priority:** `P0|P1|P2|P3`
-- **Type:** bug | performance | gameplay | build | docs | refactor | compatibility
-- **Owner:** unassigned
-- **Files:** `path`, `path`
-- **Depends on:** none | `P48-###`
+- **Priority:** `P1`
+- **Type:** core architecture migration
+- **Files:** `src/main.asm`, new `src/render.asm`, `src/memory.asm`, `AGENTS.md` if interfaces differ
+- **Depends on:** `P48-001`
 
 ### Problem
 
-Describe the observable problem and why it matters.
+Gameplay logic and screen writes currently share the same phase and player code draws itself directly.
 
-### Resolution plan
+### Resolution
 
-1. Smallest safe step.
-2. Next step.
-3. Explicit non-goals if scope could expand.
+Create `render.asm` as a real module, not a placeholder.
 
-### Acceptance criteria
+Target orchestration:
 
-- [ ] Observable criterion.
-- [ ] `./tools/build.sh` succeeds for code changes.
-- [ ] Emulator/hardware verification when relevant.
+```text
+HALT
+Render_Commit
+Input_Read
+Game_Update
+Render_Prepare
+```
+
+Initial migration may still call legacy draw primitives internally, but module ownership must be established:
+
+- renderer owns frame composition;
+- player owns simulation;
+- video owns low-level screen access.
+
+### Acceptance
+
+- [ ] `render.asm` included from `main.asm`
+- [ ] public prepare/commit interfaces documented
+- [ ] player state can be represented by a render descriptor without renderer reading input ports
+- [ ] screen writes are isolated to render/video/maze restoration paths
+- [ ] build passes
 
 ### Verification notes
 
-Not yet implemented.
+Not implemented.
+
+---
+
+## P48-011 - Generate masked pre-shifted 8x8 actor assets
+
+- **Status:** `READY`
+- **Priority:** `P1`
+- **Type:** asset/build architecture
+- **Files:** `tools/`, canonical sprite source, generated assembly include, `tools/build.sh`, `.gitignore` as needed
+- **Depends on:** none
+
+### Problem
+
+Current actor renderer shifts sprite rows at runtime. The accepted architecture spends upper-RAM data to remove shifting from the hot path.
+
+### Resolution
+
+Create a dependency-free build tool (Python stdlib is acceptable) that converts canonical 8x8 frames into eight horizontal phases.
+
+Each phase must provide image and mask data for two screen bytes per row as needed by `screen=(screen AND mask) OR image`.
+
+Requirements:
+
+- canonical art remains human/AI editable;
+- generated output is deterministic;
+- generator validates frame dimensions and values;
+- a clean build generates everything before assembly;
+- generated data lives in upper RAM with the program.
+
+### Acceptance
+
+- [ ] eight phases generated for each required frame
+- [ ] phase 0 reproduces canonical frame exactly
+- [ ] phase 1..7 correctly spill into adjacent byte
+- [ ] masks preserve transparent background
+- [ ] build works from clean checkout
+- [ ] structural generator tests/checks pass
+
+### Verification notes
+
+Not implemented.
+
+---
+
+## P48-012 - Replace runtime-shift actor drawing with masked fast renderer
+
+- **Status:** `BLOCKED`
+- **Priority:** `P1`
+- **Type:** renderer implementation
+- **Files:** `src/render.asm`, `src/video.asm`, generated sprite data, `src/player.asm`
+- **Depends on:** `P48-010`, `P48-011`
+
+### Problem
+
+`Video_DrawSpritePx` shifts at runtime and destructively writes bytes, forcing expensive background redraw.
+
+### Resolution
+
+1. Add 192-entry screen-line address table (384 bytes).
+2. Select pre-shift phase using `x & 7` during `Render_Prepare`.
+3. Precompute descriptor fields needed by commit.
+4. In commit use masked composition, no runtime row shifting.
+5. Add aligned fast path for phase 0 if it materially reduces cost.
+6. Keep clipping outside the hot loop when maze invariants guarantee on-screen actors.
+7. Stop using legacy `Video_DrawSpritePx` for normal actors once verified.
+
+### Acceptance
+
+- [ ] actor can move at every pixel X phase without damaging surrounding maze bitmap
+- [ ] pellets/background remain visible outside opaque sprite pixels
+- [ ] no per-row runtime shifting in normal actor hot path
+- [ ] screen-line LUT used
+- [ ] build passes
+- [ ] cycle-aware timing recorded for one actor and planned maximum actor count
+
+### Verification notes
+
+Blocked on render module/assets.
+
+---
+
+## P48-013 - Move player drawing out of player module
+
+- **Status:** `BLOCKED`
+- **Priority:** `P1`
+- **Type:** module ownership
+- **Files:** `src/player.asm`, `src/render.asm`, `src/main.asm`
+- **Depends on:** `P48-010`, `P48-012`
+
+### Resolution
+
+Replace direct `Player_Draw` screen ownership with a player-to-render descriptor/interface. Player chooses logical animation state; renderer resolves phase/address and draws.
+
+### Acceptance
+
+- [ ] `player.asm` contains no raw screen writes
+- [ ] animation direction/frame behavior preserved
+- [ ] renderer can later accept enemies through the same actor-descriptor concept
+- [ ] build/runtime tests pass
+
+---
+
+## P48-014 - Add cycle-budget profiling and memory budget checks
+
+- **Status:** `READY`
+- **Priority:** `P2`
+- **Type:** performance engineering
+- **Files:** `tools/`, docs, build outputs
+- **Depends on:** `P48-008`; meaningful render measurements depend on `P48-012`
+
+### Resolution
+
+Track two explicit budgets:
+
+1. **Render timing:** common/worst `Render_Commit` T-states, with initial goal around <=12,000 and warning near 14,000.
+2. **Upper RAM:** assembled binary/generated-data size plus safe stack/headroom below `$10000`.
+
+Prefer profiler/emulator measurements. If only estimates exist, label them estimates.
+
+### Acceptance
+
+- [ ] binary size/headroom checked automatically or reported deterministically
+- [ ] commit timing measured in a cycle-aware environment
+- [ ] maximum tested actors and dirty cells recorded
+- [ ] decision on 50 Hz vs fixed 25 Hz is evidence-based
+
+---
+
+## Adding tasks
+
+Use the next unused ID and this minimum structure:
+
+```text
+## P48-XXX - Title
+- Status
+- Priority
+- Type
+- Files
+- Depends on
+
+### Problem
+### Resolution
+### Acceptance
+### Verification notes
 ```
+
+Never encode important new work only in chat history or a commit message.
