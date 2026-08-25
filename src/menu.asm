@@ -13,8 +13,8 @@ Menu_Run:
     JR .print_loop
 
 .wait_input:
-    LD BC, $F7FE            ; riga tasti 1-5
 .wait_key:
+    LD BC, $F7FE            ; riga tasti 1-5
     IN A, (C)
     BIT 0, A                ; '1' -> Q/A/O/P
     JR Z, .choose_keyboard
@@ -24,6 +24,13 @@ Menu_Run:
     JR Z, .choose_sinclair1
     BIT 3, A                ; '4' -> Sinclair 2
     JR Z, .choose_sinclair2
+
+    ; Kempston fire (bit 4, active high) is also a direct menu shortcut.
+    ; This lets a joystick-only player start without touching the keyboard.
+    LD BC, PORT_KEMPSTON
+    IN A, (C)
+    BIT 4, A
+    JR NZ, .choose_kempston
     JR .wait_key
 
 .choose_keyboard:
