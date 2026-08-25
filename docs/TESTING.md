@@ -49,9 +49,9 @@ Expected invariants include:
 - obsolete hand-written `Pac_FrameTable*` tables are absent;
 - dirty maze restoration has not reintroduced the redundant attribute-only pass.
 
-These architecture guards encode regression lessons from `INC-2026-001` and `INC-2026-003` so they are enforceable, not only documented.
+These guards encode regression lessons so they are enforceable, not only documented.
 
-### V2 - Canonical assembly/TAP build
+### V2 - Canonical build, runtime harness, and TAP-load verification
 
 ```sh
 ./tools/build.sh
@@ -61,19 +61,31 @@ Required tools:
 
 - Python 3
 - `sjasmplus`
-- SkoolKit `bin2tap.py`
+- SkoolKit `bin2tap.py`, `tap2sna.py`, `trace.py`, `snapinfo.py`
 
-A successful build must produce:
+A successful V2 build must:
 
-- `build/pac48.bin`
-- `build/pac48.tap`
-- `build/pac48-<VERSION>.tap`
+1. complete V1;
+2. run renderer reference-model tests;
+3. assemble the main game with zero errors and warnings;
+4. enforce the current upper-RAM binary budget;
+5. execute the headless 48K Z80 runtime harness;
+6. generate `build/pac48.tap` and `build/pac48-<VERSION>.tap`;
+7. simulate a freshly booted 48K Spectrum loading the generated TAP;
+8. prove that simulated loading reaches PAC48 entry point `PC=32768` (`$8000`).
 
-The build also enforces the current upper-RAM binary budget and reruns V1 before/after assembly.
+Durable TAP-load evidence is written to:
 
-If a required command is missing, record the exact command as missing and leave relevant tasks/incidents at `VERIFY`.
+```text
+build/tap_load.log
+build/tap_load.z80
+```
 
-### V3 - 48K emulator smoke test
+The tape-load test is deliberately part of V2: successful assembly alone is not enough to call a downloadable TAP usable.
+
+If a required command is missing or tape simulation fails, record the exact failure and do not publish a Latest release.
+
+### V3 - 48K emulator/manual visual and control smoke test
 
 Use a 48K configuration, not a 128K-only mode that could hide compatibility mistakes.
 
@@ -131,62 +143,63 @@ Confirm:
 
 #### Pixel-phase sweep
 
-For horizontal movement, visually inspect all eight `x & 7` phases between two byte boundaries.
+Inspect all eight `x & 7` horizontal phases and all eight `y & 7` phases across cell boundaries.
 
-For vertical movement, inspect all eight `y & 7` phases across cell boundaries.
-
-Confirm:
-
-- sprite shape remains coherent;
-- spill byte does not erase neighboring maze pixels;
-- player stays visible over both pellet and empty corridor cells.
+Confirm sprite shape remains coherent, spill bytes preserve neighboring maze pixels, and the player remains visible over pellet and empty corridor cells.
 
 #### Turning and stopping
 
-Test turns in each orientation:
-
-- horizontal -> up
-- horizontal -> down
-- vertical -> left
-- vertical -> right
-
-Also drive the player into a wall and confirm its visual facing remains the last valid direction rather than snapping to right.
-
-Confirm no one-frame corruption is left at the old/new dirty-cell intersection.
+Test horizontal→up/down and vertical→left/right turns. Drive the player into a wall and confirm visual facing remains the last valid direction rather than snapping right.
 
 ### V4 - Cycle-aware performance test
 
 Required before closing renderer performance work (`P48-014`, `INC-2026-003`).
 
-Use an emulator/debugger/profiler that reports Z80 timing or traceable T-states.
+Canonical automated timing uses SkoolKit `trace.py` directly on the raw assembled performance harness with 48K contention enabled. Exact-code timing must not pass through an unproven snapshot serialization boundary (`INC-2026-006`).
 
 Record:
 
-- emulator/tool and version;
-- 48K timing mode;
-- T-states for `Render_Commit` with player only;
-- current dirty-cell count;
-- worst observed dirty-cell count;
-- later: player + planned maximum enemy count;
-- assembled binary size.
+- tool/version and 48K timing mode;
+- T-states/instruction count for `Render_Commit`;
+- dirty-cell counts;
+- actor count;
+- assembled binary size/headroom.
 
-Current engineering targets from ADR 0001:
+Engineering targets:
 
 - common `Render_Commit`: around/below 12,000 T-states;
-- about 14,000 T-states: warning threshold requiring investigation;
-- stable 50 Hz preferred;
-- if verified impossible after optimization, choose deliberate fixed 25 Hz rather than irregular missed frames.
+- about 14,000 T-states: warning threshold;
+- stable 50 Hz preferred.
+
+Verified baseline on 2026-08-25:
+
+```text
+common_dirty1     4320 T-states / 547 instructions
+cardinal_dirty2   5455 T-states / 690 instructions
+arbitrary_dirty4  7800 T-states / 978 instructions
+```
+
+These measurements are for the current player-only renderer. Re-run V4 when actor count or renderer architecture materially changes.
 
 ### V5 - Real hardware regression test
 
-Required before a release that claims real-hardware confidence for timing/input changes.
+Required before a release claims real-hardware-tested confidence for timing/input changes.
 
-Record:
+Record Spectrum/model or compatible hardware, loading method, input interface, and visible differences from emulator results.
 
-- Spectrum/model or compatible hardware;
-- loading method;
-- input interface used;
-- visible differences from emulator results.
+## Verified-release publication gate
+
+`pac48-latest.tap` may be published only from a successful canonical GitHub Actions build of `main`.
+
+The publication job must consume the exact artifact already verified by the build job, validate `SHA256SUMS.txt`, attach a versioned TAP plus build metadata, create a per-commit release, and mark it Latest. It must not compile a second independent copy for publication.
+
+Stable consumer URL:
+
+```text
+https://github.com/Frapo78/pac48/releases/latest/download/pac48-latest.tap
+```
+
+Documentation-only pushes are excluded from automatic releases so they do not create duplicate binary releases.
 
 ## Incident closure rule
 
@@ -194,7 +207,7 @@ An incident may move to `CLOSED` only when:
 
 1. corrective code exists;
 2. required verification layers have passed;
-3. regression guard is documented and, where practical, executable in V1;
+3. regression guard is documented and, where practical, executable in V1/V2;
 4. TODO verification notes are updated;
 5. `CHANGELOG.md` reflects the fix.
 
@@ -202,7 +215,8 @@ Examples:
 
 - register-clobber rendering bug: V2 + V3 required;
 - Sinclair mapping bug: V2 + relevant V3 control tests required;
-- renderer performance architecture: V2 + V3 + V4 required.
+- renderer performance architecture: V2 + V3 + V4 required;
+- build/release tooling incident: deterministic CI/release evidence may be sufficient when no visual/hardware behavior is involved.
 
 ## Verification report template
 
@@ -213,12 +227,14 @@ Environment:
 
 V0 static: PASS/FAIL/NOT RUN
 V1 structural/architecture: PASS/FAIL/NOT RUN
-V2 build: PASS/FAIL/NOT RUN
-V3 emulator: PASS/FAIL/NOT RUN
+V2 build/runtime/TAP-load: PASS/FAIL/NOT RUN
+V3 emulator/manual visual: PASS/FAIL/NOT RUN
 V4 timing: PASS/FAIL/NOT RUN
 V5 hardware: PASS/FAIL/NOT RUN
 
 Binary bytes:
+TAP bytes:
+TAP load reached PC=$8000: YES/NO
 Render_Commit T-states:
 Dirty cells common/worst:
 Actors tested:
@@ -228,4 +244,4 @@ Related incidents:
 Notes:
 ```
 
-Store durable evidence in the relevant TODO/incident entries; do not leave the only copy in chat history.
+Store durable evidence in TODO/incident/changelog/release metadata; do not leave the only copy in chat history.
