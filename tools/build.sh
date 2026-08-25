@@ -27,16 +27,19 @@ test -n "$VERSION" || { echo "ERROR: VERSION file is empty"; exit 1; }
 mkdir -p "$BUILD_DIR" "$GENERATED_DIR"
 cd "$ROOT_DIR"
 
-echo "[1/5] Generating masked pre-shifted sprites..."
+echo "[1/6] Generating masked pre-shifted sprites..."
 python3 tools/gen_shifted_sprites.py src/sprites.asm "$GENERATED_SPRITES"
 
-echo "[2/5] Running structural and architecture checks..."
+echo "[2/6] Running structural and architecture checks..."
 python3 tools/check_project.py \
   --maze src/maze.asm \
   --generated-sprites "$GENERATED_SPRITES" \
   --source-root src
 
-echo "[3/5] Assembling..."
+echo "[3/6] Running renderer reference-model tests..."
+python3 tools/test_render_model.py
+
+echo "[4/6] Assembling..."
 sjasmplus --raw="$OUTPUT_BIN" src/main.asm
 test -f "$OUTPUT_BIN" || { echo "ERROR: sjasmplus did not create $OUTPUT_BIN"; exit 1; }
 
@@ -47,16 +50,20 @@ python3 tools/check_project.py \
   --binary "$OUTPUT_BIN" \
   --max-binary-bytes "$MAX_BIN_BYTES"
 
-echo "[4/5] Creating TAP..."
+echo "[5/6] Creating TAP..."
 bin2tap.py -o 32768 -s 32768 -c 32767 "$OUTPUT_BIN" "$OUTPUT_TAP"
 
-echo "[5/5] Creating versioned TAP..."
+echo "[6/6] Creating versioned TAP..."
 cp "$OUTPUT_TAP" "$VERSIONED_TAP"
+
+BIN_BYTES="$(wc -c < "$OUTPUT_BIN" | tr -d '[:space:]')"
+HEADROOM_BYTES="$((MAX_BIN_BYTES - BIN_BYTES))"
 
 echo
 echo "Build complete:"
 echo "  Version: $VERSION"
-echo "  BIN: $OUTPUT_BIN"
+echo "  BIN: $OUTPUT_BIN ($BIN_BYTES bytes)"
+echo "  Upper-RAM budget headroom: $HEADROOM_BYTES bytes before safety ceiling"
 echo "  TAP: $OUTPUT_TAP"
 echo "  Versioned TAP: $VERSIONED_TAP"
 echo "  Generated sprites: $GENERATED_SPRITES"
