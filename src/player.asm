@@ -10,6 +10,13 @@ Player_Update:
     OR A
     RET Z
 
+    ; Functional centre tunnel: wrapping is a movement event of its own frame.
+    ; It happens before normal edge collision because leaving x=0/27 is legal
+    ; only on Maze_TunnelRow.
+    CALL Player_TryTunnelWarp
+    OR A
+    RET NZ
+
     ; Validate the leading edge of the full 8x8 actor for every pixel step.
     CALL Player_CanContinue
     OR A
@@ -61,9 +68,15 @@ Player_Update:
 .done:
     RET
 
-; Requested perpendicular turns remain buffered until an aligned legal node.
-; A 180-degree reversal is safe within the same corridor, so apply it
-; immediately instead of waiting up to seven pixels for the next node.
+; ------------------------------------------------------------
+; Requested-turn model.
+;
+; 180-degree reversals remain immediate. Perpendicular requests no longer wait
+; for exact x%8==0/y%8==0: when Pac is within Pac_TurnWindow pixels of the
+; nearest logical node, a legal branch can snap the travel axis to that node
+; and turn in the same frame. This implements a compact Spectrum-friendly
+; approximation of arcade pre-turn/post-turn cornering and guarantees the new
+; corridor starts perfectly centred.
 Player_TryRequestedDir:
     LD A, (Pac_ReqDir)
     OR A
@@ -72,23 +85,32 @@ Player_TryRequestedDir:
 
     LD A, (Pac_Dir)
     OR A
-    JR Z, .aligned_turn
+    JR Z, .stopped
+    CP B
+    RET Z
+
     ADD A, B
     CP 3                           ; up + down
     JR Z, .reverse_now
     CP 7                           ; left + right
     JR Z, .reverse_now
 
-.aligned_turn:
+    ; Remaining combinations are perpendicular turns.
+    CALL Player_TryCornerTurn
+    RET
+
+.stopped:
+    ; A stationary actor should normally be exactly on a node. Keep this path
+    ; strict so a corrupted/off-grid stopped state cannot teleport diagonally.
     CALL Player_IsAligned
     OR A
     RET Z
-    LD A, (Pac_ReqDir)
+    LD A, B
     CALL Player_LoadNextTileForDir
     CALL Maze_CanMove
     OR A
     RET Z
-    LD A, (Pac_ReqDir)
+    LD A, B
     LD (Pac_Dir), A
     LD (Pac_FacingDir), A
     RET
@@ -97,6 +119,170 @@ Player_TryRequestedDir:
     LD A, B
     LD (Pac_Dir), A
     LD (Pac_FacingDir), A
+    RET
+
+; Try a perpendicular turn near the closest 8-pixel node.
+; In: B=requested direction.
+; Out: A=1 when applied, A=0 otherwise.
+Player_TryCornerTurn:
+    LD A, (Pac_Dir)
+    CP 3
+    JR Z, .from_horizontal
+    CP 4
+    JR Z, .from_horizontal
+    CP 1
+    JR Z, .from_vertical
+    CP 2
+    JR Z, .from_vertical
+    XOR A
+    RET
+
+.from_horizontal:
+    LD A, B
+    CP 1
+    JR Z, .snap_x
+    CP 2
+    JR Z, .snap_x
+    XOR A
+    RET
+
+.snap_x:
+    LD A, (Pac_PixelX)
+    LD C, A                        ; original x for rollback
+    CALL Player_FindNearestNode
+    JR NC, .no_turn
+    LD (Pac_PixelX), A
+
+    LD A, B
+    CALL Player_LoadNextTileForDir
+    CALL Maze_CanMove
+    OR A
+    JR Z, .restore_x
+
+    CALL Player_ApplyCornerDir
+    LD A, 1
+    RET
+
+.restore_x:
+    LD A, C
+    LD (Pac_PixelX), A
+.no_turn:
+    XOR A
+    RET
+
+.from_vertical:
+    LD A, B
+    CP 3
+    JR Z, .snap_y
+    CP 4
+    JR Z, .snap_y
+    XOR A
+    RET
+
+.snap_y:
+    LD A, (Pac_PixelY)
+    LD C, A                        ; original y for rollback
+    CALL Player_FindNearestNode
+    JR NC, .no_turn
+    LD (Pac_PixelY), A
+
+    LD A, B
+    CALL Player_LoadNextTileForDir
+    CALL Maze_CanMove
+    OR A
+    JR Z, .restore_y
+
+    CALL Player_ApplyCornerDir
+    LD A, 1
+    RET
+
+.restore_y:
+    LD A, C
+    LD (Pac_PixelY), A
+    XOR A
+    RET
+
+; Apply a successful corner after its travel axis has been snapped to a node.
+; In: B=requested direction.
+Player_ApplyCornerDir:
+    LD A, B
+    LD (Pac_Dir), A
+    LD (Pac_ReqDir), A
+    LD (Pac_FacingDir), A
+    CALL Player_SyncTile
+    CALL Player_ConsumeCurrentPellet
+    RET
+
+; In: A=pixel coordinate on the current travel axis.
+; Out: carry set and A=nearest 8-pixel node when distance <= Pac_TurnWindow;
+;      carry clear when exactly midway/outside the permitted turn window.
+; Preserves: BC.
+Player_FindNearestNode:
+    LD D, A
+    AND 7
+    JR Z, .aligned
+
+    CP Pac_TurnWindow + 1          ; remainders 1..3 -> previous node
+    JR C, .lower
+    CP 8 - Pac_TurnWindow          ; remainders 5..7 -> next node
+    JR NC, .upper
+
+    OR A                           ; clear carry (remainder 4 with window=3)
+    RET
+
+.lower:
+    LD A, D
+    AND $F8
+    SCF
+    RET
+.upper:
+    LD A, D
+    AND $F8
+    ADD A, 8
+    SCF
+    RET
+.aligned:
+    LD A, D
+    SCF
+    RET
+
+; ------------------------------------------------------------
+; Functional centre tunnel wrap.
+; Out: A=1 when a wrap occurred, A=0 otherwise.
+Player_TryTunnelWarp:
+    LD A, (Pac_PixelY)
+    CP Maze_TunnelPixelY
+    JR NZ, .none
+
+    LD A, (Pac_Dir)
+    CP 3
+    JR Z, .left
+    CP 4
+    JR Z, .right
+    JR .none
+
+.left:
+    LD A, (Pac_PixelX)
+    CP Maze_TunnelLeftPixelX
+    JR NZ, .none
+    LD A, Maze_TunnelRightPixelX
+    LD (Pac_PixelX), A
+    JR .wrapped
+
+.right:
+    LD A, (Pac_PixelX)
+    CP Maze_TunnelRightPixelX
+    JR NZ, .none
+    LD A, Maze_TunnelLeftPixelX
+    LD (Pac_PixelX), A
+
+.wrapped:
+    CALL Player_SyncTile
+    CALL Player_ConsumeCurrentPellet
+    LD A, 1
+    RET
+.none:
+    XOR A
     RET
 
 ; Out: A=1 when a held opposite direction was legal and selected, else 0.
