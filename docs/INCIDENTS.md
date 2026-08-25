@@ -8,13 +8,13 @@ For planned work use `docs/TODO.md`. For change history use `CHANGELOG.md`. For 
 
 ## Mandatory agent rules
 
-Before changing engine code, agents must scan this file for incidents involving the modules, registers, input devices, renderer paths, build tools, or verification infrastructure they are about to touch.
+Before changing engine code, agents must scan this file for incidents involving the modules, registers, input devices, renderer paths, build tools, release automation, or verification infrastructure they are about to touch.
 
 Create a new incident when:
 
 - a regression reaches `main`;
 - a subtle bug could reasonably be repeated;
-- code appeared correct but failed assembly, emulator, hardware, timing, memory, input, or CI verification;
+- code appeared correct but failed assembly, emulator, hardware, timing, memory, input, CI, or release verification;
 - an architecture/test approach is abandoned because it caused measurable problems;
 - a build/tooling failure reveals a missing invariant;
 - a fix depends on a non-obvious register, memory, timing, hardware, or CI constraint.
@@ -68,7 +68,7 @@ Public assembly routines whose callers may reuse coordinates must document input
 
 ### Verification evidence
 
-V1/V2 passed in GitHub Actions run `32797213612` on 2026-08-25 using sjasmplus 1.23.1 and SkoolKit 10.1: 0 assembler errors, 0 warnings, TAP generated successfully. V3 visual maze/pellet verification remains required before `CLOSED`.
+V1/V2 now pass in canonical GitHub Actions with sjasmplus 1.23.1 and SkoolKit 10.1: 0 assembler errors, 0 warnings, runtime harness PASS, generated TAP load reaches `PC=$8000`. V3 visual maze/pellet verification remains required before `CLOSED`.
 
 ---
 
@@ -103,7 +103,7 @@ Hardware input mappings must be documented beside port/row access and all four d
 
 ### Verification evidence
 
-V1/V2 passed in GitHub Actions run `32797213612`: clean assembly and TAP generation. The Sinclair portions of V3 remain required before `CLOSED`.
+V1/V2 pass in canonical GitHub Actions: clean assembly, runtime harness, timing tests, TAP generation, and fresh-48K tape loading. The Sinclair portions of V3 remain required before `CLOSED`.
 
 ---
 
@@ -118,7 +118,7 @@ V1/V2 passed in GitHub Actions run `32797213612`: clean assembly and TAP generat
 
 ### Symptom
 
-The engine redrew all 560 maze cells every frame and shifted/wrote actor bytes destructively at runtime. Full redraw repaired the resulting trails but consumed frame budget that will be needed for enemies, score, collisions, and sound.
+The engine redrew all 560 maze cells every frame and shifted/wrote actor bytes destructively at runtime. Full redraw repaired resulting trails but consumed frame budget needed for enemies, score, collisions, and sound.
 
 ### Root cause
 
@@ -126,7 +126,7 @@ The incremental prototype mixed simulation, background restoration, sprite trans
 
 ### Corrective action
 
-ADR 0001 is implemented at the code level:
+ADR 0001 is implemented:
 
 - initial maze draw only;
 - dedicated `render.asm`;
@@ -151,7 +151,7 @@ ADR 0001 is implemented at the code level:
 
 ### Verification evidence
 
-V1/V2 passed in run `32797213612`: structural/architecture checks passed; sjasmplus assembled 3,081 source lines with 0 errors/0 warnings; BIN and TAP artifacts were produced. Subsequent canonical builds include renderer reference-model regressions. V3 visual/runtime verification and V4 cycle-aware timing remain required before `CLOSED`.
+V1/V2 pass. V4 passed with 48K contention enabled: common dirty-1 `4320` T-states, cardinal dirty-2 `5455`, arbitrary dirty-4 `7800`; binary is 8042 bytes with 20630 bytes of conservative headroom. The generated TAP also reaches `PC=$8000` from a fresh simulated 48K load. V3 visual rendering/turning tests remain required before `CLOSED`.
 
 ---
 
@@ -165,15 +165,15 @@ V1/V2 passed in run `32797213612`: structural/architecture checks passed; sjasmp
 
 ### Symptom
 
-The first verification workflow failed during `actions/setup-python` before any PAC48 checks ran. The action reported that no `requirements.txt` or `pyproject.toml` matched the requested pip-cache dependency path.
+The first verification workflow failed during `actions/setup-python` before any PAC48 checks ran because no pip-cache dependency manifest existed.
 
 ### Root cause
 
-`cache: pip` was enabled even though PAC48 intentionally has no Python dependency manifest; the CI installs its small pinned tool dependency directly.
+`cache: pip` was enabled even though PAC48 intentionally has no Python dependency manifest; CI installs its small pinned tool dependency directly.
 
 ### Corrective action
 
-Removed `cache: pip` from `actions/setup-python` and kept SkoolKit explicitly pinned in the workflow.
+Removed `cache: pip` from `actions/setup-python` and kept SkoolKit explicitly pinned.
 
 ### Regression guard
 
@@ -181,7 +181,7 @@ Do not enable dependency caching unless a real cache dependency manifest/path is
 
 ### Verification evidence
 
-GitHub Actions run `32797213612` completed all setup/build/artifact steps successfully after the correction.
+Subsequent GitHub Actions runs complete setup/build/artifact steps successfully.
 
 ---
 
@@ -199,19 +199,84 @@ An experimental V3 CI harness launched Fuse under bare Xvfb and attempted to dri
 
 ### Root cause
 
-The harness depended on GUI focus/window behavior that is not a stable contract in a bare headless X server. This made the verification mechanism less reliable than the code it was intended to test.
+The harness depended on GUI focus/window behavior that is not a stable contract in a bare headless X server.
 
 ### Corrective action
 
-Removed the GUI Fuse harness from the canonical workflow and deleted `tools/emulator_smoke.sh`. Canonical CI is again deterministic and bounded. V3 remains an explicit emulator/hardware layer until a non-GUI, deterministic simulator/replay approach is implemented.
+Removed the GUI Fuse harness from canonical CI. Deterministic runtime coverage now uses SkoolKit simulation; manual V3 remains a separate visual/input evidence layer.
 
 ### Regression guard
 
-Do not add GUI/window-manager automation to required CI for PAC48. Automated runtime verification must use a deterministic simulator, replayable input mechanism, or an explicitly provisioned and bounded environment. Manual V3 remains valid evidence when recorded according to `docs/TESTING.md`.
+Do not add GUI/window-manager automation to required CI. Automated runtime verification must use a deterministic simulator/replay mechanism or explicitly bounded environment.
 
 ### Verification evidence
 
-The GUI path was removed from `main`; subsequent canonical CI no longer depends on Fuse/Xvfb/xdotool and concurrency cancels obsolete runs.
+Canonical CI is deterministic and bounded; subsequent runs no longer depend on Fuse/Xvfb/xdotool.
+
+---
+
+## INC-2026-006 - Snapshot round-trip invalidated exact renderer timing evidence
+
+- **Status:** `CLOSED`
+- **Severity:** `S2`
+- **Detected:** 2026-08-25
+- **Affected:** `tests/perf_harness.asm`, `tools/run_perf_tests.sh`
+- **Related TODO:** `P48-014`
+
+### Symptom
+
+The performance harness assembled correctly, but after converting the raw image to a Z80 snapshot and reloading it, the instruction at the exported measurement start no longer matched the original `CALL Render_Commit`. Timing verification therefore failed even though the game build and runtime harness were healthy.
+
+### Root cause
+
+An exact instruction-range profiler relied on an unnecessary raw→snapshot→reload serialization step. The snapshot conversion changed the byte at the precise measurement entry, so the profiler was no longer guaranteed to execute the bytes produced by sjasmplus.
+
+### Corrective action
+
+- removed the intermediate snapshot path from performance measurement;
+- execute the raw assembled harness directly with SkoolKit `trace.py`;
+- inject scanline LUT, dirty lists, descriptors, stack, and timing state using deterministic `--poke`, `--reg`, and `--state` arguments;
+- validate that the raw byte at `Perf_MeasureStart` is the expected `CALL` opcode before accepting timing evidence.
+
+### Regression guard
+
+Exact-code timing measurements must execute the raw assembled bytes or prove byte identity across any serialization boundary. The profiler must reject evidence if its measurement-start opcode differs from the assembled expectation.
+
+### Verification evidence
+
+GitHub Actions run `32799100817` passed completely. Measured `Render_Commit`: 4320 / 5455 / 7800 T-states for the common/cardinal/arbitrary cases, all below budget.
+
+---
+
+## INC-2026-007 - Release succeeded but CI failed on unsupported `isLatest` field
+
+- **Status:** `CLOSED`
+- **Severity:** `S2`
+- **Detected:** 2026-08-25
+- **Affected:** `.github/workflows/verify.yml`
+- **Related TODO:** `P48-017`
+
+### Symptom
+
+The first automated GitHub Release was created successfully and contained the correct TAP assets, but the publish job ended red after publication because `gh release view --json ...` was asked for `isLatest`, a field that command does not expose.
+
+### Root cause
+
+The workflow assumed the JSON field set of `gh release view` and `gh release list` was identical. `isLatest` is available from release listing, not from the release-view field set used by the installed GitHub CLI.
+
+### Corrective action
+
+- use `gh release view` only for supported fields such as tag, URL, and assets;
+- verify Latest status separately with `gh release list --json tagName,isLatest`;
+- keep release-package SHA-256 validation before publication.
+
+### Regression guard
+
+Release automation must validate CLI field availability and keep post-publication checks separate from the act of creating the release. A release job is not considered healthy until the entire workflow is green.
+
+### Verification evidence
+
+GitHub Actions run `32799266067` completed both build and publication jobs successfully. Later runs also publish a `pac48-latest.tap` asset after a fresh-48K tape-load simulation reaches `PC=$8000`.
 
 ---
 
