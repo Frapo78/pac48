@@ -14,21 +14,23 @@ Maze_OffsetX    EQU 2
 Maze_OffsetY    EQU 2
 
 ; attributi per rendering
+; I corridoi mantengono INK giallo anche quando vuoti: gli attori mobili non
+; riscrivono gli attributi e restano visibili durante il movimento sub-tile.
 Maze_AttrPellet EQU 64 | (COLOR_BLACK << 3) | COLOR_YELLOW
 Maze_AttrWall   EQU 64 | (COLOR_BLUE << 3) | COLOR_BLUE
-Maze_AttrEmpty  EQU 64 | (COLOR_BLACK << 3) | COLOR_BLACK
+Maze_AttrEmpty  EQU 64 | (COLOR_BLACK << 3) | COLOR_YELLOW
 
 ; ------------------------------------------
-; Disegna l'intero labirinto
-; usa attributi per muri/pavimento e bitmap solo per pellet
+; Disegna l'intero labirinto.
+; Va usato all'inizio del livello, non nel normale loop per-frame.
 Maze_Draw:
     LD HL, Maze_Map
-    LD B, Maze_Height        ; contatore righe
-    LD E, 0                  ; y corrente
+    LD B, Maze_Height
+    LD E, 0
 
 .row_loop:
     LD C, Maze_Width
-    LD D, 0                  ; x corrente
+    LD D, 0
 
 .col_loop:
     LD A, (HL)
@@ -36,6 +38,7 @@ Maze_Draw:
     JR Z, .draw_wall
     CP Maze_CellEmpty
     JR Z, .draw_empty
+
     PUSH HL
     PUSH BC
     PUSH DE
@@ -48,6 +51,7 @@ Maze_Draw:
     POP BC
     POP HL
     JR .after_draw
+
 .draw_empty:
     PUSH HL
     PUSH BC
@@ -56,25 +60,26 @@ Maze_Draw:
     CALL Maze_DrawTileAtOffset
     LD HL, Sprite_Empty
     LD A, Maze_AttrEmpty
-    CALL Maze_DrawAtOffset          ; pulisce eventuale bitmap precedente
+    CALL Maze_DrawAtOffset
     POP DE
     POP BC
     POP HL
     JR .after_draw
+
 .draw_wall:
     PUSH HL
     PUSH BC
     PUSH DE
     LD A, Maze_AttrWall
-    CALL Maze_DrawTileAtOffset      ; muro solido via PAPER blu
+    CALL Maze_DrawTileAtOffset
     LD HL, Sprite_Empty
     LD A, Maze_AttrWall
-    CALL Maze_DrawAtOffset          ; bitmap vuota, attributo resta blu
+    CALL Maze_DrawAtOffset
     POP DE
     POP BC
     POP HL
-.after_draw:
 
+.after_draw:
     INC HL
     INC D
     DEC C
@@ -83,12 +88,13 @@ Maze_Draw:
     INC E
     DEC B
     JR NZ, .row_loop
-
     RET
 
-; Disegna un tile con sprite e attributo, applicando offset per centrare la mappa
+; Disegna bitmap + attributo applicando offset mappa.
 ; In: HL=sprite, A=attr, D=x mappa, E=y mappa
+; Preserves: DE
 Maze_DrawAtOffset:
+    PUSH DE
     LD A, D
     ADD A, Maze_OffsetX
     LD D, A
@@ -96,11 +102,14 @@ Maze_DrawAtOffset:
     ADD A, Maze_OffsetY
     LD E, A
     CALL Video_DrawSprite
+    POP DE
     RET
 
-; Disegna solo l'attributo di un tile, applicando offset mappa
+; Disegna solo l'attributo applicando offset mappa.
 ; In: A=attr, D=x mappa, E=y mappa
+; Preserves: DE
 Maze_DrawTileAtOffset:
+    PUSH DE
     PUSH AF
     LD A, D
     ADD A, Maze_OffsetX
@@ -110,9 +119,10 @@ Maze_DrawTileAtOffset:
     LD E, A
     POP AF
     CALL Video_DrawTile
+    POP DE
     RET
 
-; Ripristina una singola cella del maze.
+; Ripristina una singola cella dalla sorgente persistente Maze_Map.
 ; In: D=x mappa, E=y mappa
 Maze_DrawCell:
     LD A, D
@@ -129,14 +139,14 @@ Maze_DrawCell:
     LD A, E
     LD H, 0
     LD L, A
-    ADD HL, HL           ; y*2
-    ADD HL, HL           ; y*4
+    ADD HL, HL
+    ADD HL, HL
     PUSH HL
-    ADD HL, HL           ; y*8
-    POP DE               ; y*4
-    ADD HL, DE           ; y*12
-    ADD HL, HL           ; y*24
-    ADD HL, DE           ; y*28
+    ADD HL, HL
+    POP DE
+    ADD HL, DE
+    ADD HL, HL
+    ADD HL, DE
 
     POP AF
     LD D, 0
@@ -160,6 +170,7 @@ Maze_DrawCell:
     CALL Maze_DrawAtOffset
     POP DE
     RET
+
 .empty:
     PUSH DE
     LD A, Maze_AttrEmpty
@@ -169,6 +180,7 @@ Maze_DrawCell:
     CALL Maze_DrawAtOffset
     POP DE
     RET
+
 .wall:
     PUSH DE
     LD A, Maze_AttrWall
@@ -180,38 +192,36 @@ Maze_DrawCell:
     RET
 
 ; ------------------------------------------
-; Controlla se la cella (D=x, E=y) è attraversabile
-; Ritorna A=1 se ok, A=0 se muro o fuori mappa
+; Controlla se la cella (D=x, E=y) è attraversabile.
+; Out: A=1 walkable, A=0 wall/outside.
 Maze_CanMove:
-    ; limiti X
     LD A, D
     CP Maze_Width
     JR NC, .blocked
-    ; limiti Y
     LD A, E
     CP Maze_Height
     JR NC, .blocked
 
-    ; calcola offset = y*28 + x
+    ; offset = y*28 + x
     LD A, D
-    PUSH AF              ; salva x
+    PUSH AF
 
     LD A, E
     LD H, 0
-    LD L, A              ; HL = y
-    ADD HL, HL           ; y*2
-    ADD HL, HL           ; y*4
-    PUSH HL              ; salva y*4
-    ADD HL, HL           ; y*8
-    POP DE               ; DE = y*4
-    ADD HL, DE           ; y*12
-    ADD HL, HL           ; y*24
-    ADD HL, DE           ; y*28
+    LD L, A
+    ADD HL, HL
+    ADD HL, HL
+    PUSH HL
+    ADD HL, HL
+    POP DE
+    ADD HL, DE
+    ADD HL, HL
+    ADD HL, DE
 
-    POP AF               ; ripristina x
+    POP AF
     LD D, 0
     LD E, A
-    ADD HL, DE           ; HL = offset
+    ADD HL, DE
 
     LD DE, Maze_Map
     ADD HL, DE
@@ -227,45 +237,25 @@ Maze_CanMove:
     RET
 
 ; ------------------------------------------
-; Dati del labirinto (28x20)
+; Dati del labirinto (28x20 = 560 byte)
 Maze_Map:
-    ; riga 0
     DEFB 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
-    ; riga 1
     DEFB 1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1
-    ; riga 2
     DEFB 1,0,1,1,1,1,0,1,1,1,1,1,0,1,1,0,1,1,1,1,1,0,1,1,1,1,0,1
-    ; riga 3
     DEFB 1,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1
-    ; riga 4
     DEFB 1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,0,1,0,1,1,1,0,1,1
-    ; riga 5
     DEFB 1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1
-    ; riga 6
     DEFB 1,0,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1
-    ; riga 7
     DEFB 1,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,1
-    ; riga 8
     DEFB 1,1,1,1,0,1,1,1,1,1,0,1,0,1,1,0,1,0,1,1,1,1,0,1,1,1,1,1
-    ; riga 9
     DEFB 1,0,0,1,0,0,0,0,0,0,0,0,0,1,0,1,0,0,0,0,0,0,0,0,1,0,0,1
-    ; riga 10
     DEFB 1,0,0,1,0,1,1,1,1,1,0,1,1,1,0,1,1,1,1,0,1,1,1,1,1,0,0,1
-    ; riga 11
     DEFB 1,0,0,1,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1
-    ; riga 12
     DEFB 1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,1,1,1,1,0,1,0,1,1,1,1,1,1
-    ; riga 13
     DEFB 1,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1
-    ; riga 14
     DEFB 1,0,1,1,1,1,0,1,0,1,1,1,0,1,1,1,1,0,1,1,1,0,1,0,1,1,1,1
-    ; riga 15
     DEFB 1,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,1
-    ; riga 16
     DEFB 1,0,1,1,0,1,1,1,1,1,0,1,1,1,1,1,1,1,1,0,1,1,1,1,0,1,1,1
-    ; riga 17
     DEFB 1,0,0,0,0,0,0,0,0,0,0,0,0,1,1,0,0,0,0,0,0,0,0,0,0,0,0,1
-    ; riga 18
     DEFB 1,0,1,1,1,1,1,1,1,1,1,1,0,1,1,0,1,1,1,1,1,1,1,1,1,1,0,1
-    ; riga 19
     DEFB 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
