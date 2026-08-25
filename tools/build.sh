@@ -30,10 +30,11 @@ cd "$ROOT_DIR"
 echo "[1/5] Generating masked pre-shifted sprites..."
 python3 tools/gen_shifted_sprites.py src/sprites.asm "$GENERATED_SPRITES"
 
-echo "[2/5] Running structural checks..."
+echo "[2/5] Running structural and architecture checks..."
 python3 tools/check_project.py \
   --maze src/maze.asm \
-  --generated-sprites "$GENERATED_SPRITES"
+  --generated-sprites "$GENERATED_SPRITES" \
+  --source-root src
 
 echo "[3/5] Assembling..."
 sjasmplus --raw="$OUTPUT_BIN" src/main.asm
@@ -42,6 +43,7 @@ test -f "$OUTPUT_BIN" || { echo "ERROR: sjasmplus did not create $OUTPUT_BIN"; e
 python3 tools/check_project.py \
   --maze src/maze.asm \
   --generated-sprites "$GENERATED_SPRITES" \
+  --source-root src \
   --binary "$OUTPUT_BIN" \
   --max-binary-bytes "$MAX_BIN_BYTES"
 
