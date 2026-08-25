@@ -77,11 +77,12 @@ Maze_Draw:
 
 ; Draw bitmap + attribute applying maze -> screen-cell offset.
 ; In: HL=sprite, A=attr, D=x maze, E=y maze
-; Preserves: AF, DE
-; Clobbers: BC, HL (through Video_DrawSprite)
+; Preserves: DE
+; Important: the input attribute in A survives coordinate translation and is
+; passed unchanged into Video_DrawSprite. AF may be clobbered by the callee.
 Maze_DrawAtOffset:
-    PUSH AF
     PUSH DE
+    PUSH AF
     LD A, D
     ADD A, Maze_OffsetX
     LD D, A
@@ -95,7 +96,8 @@ Maze_DrawAtOffset:
 
 ; Attribute-only helper for future/HUD/background cases.
 ; In: A=attr, D=x maze, E=y maze
-; Preserves: AF, DE
+; Preserves: DE
+; Important: A survives coordinate translation into Video_DrawTile.
 Maze_DrawTileAtOffset:
     PUSH DE
     PUSH AF
