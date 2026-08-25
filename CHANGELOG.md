@@ -23,7 +23,7 @@ Use concise entries grouped under `Added`, `Changed`, `Fixed`, `Verification`, a
 - Dirty-cell background restoration with bounded/de-duplicated x/y cell lists.
 - 192-entry bitmap scanline address lookup table initialized at startup.
 - Build-time `tools/gen_shifted_sprites.py` generator producing eight horizontal phases and masks for every player animation frame.
-- `tools/check_project.py` deterministic checks for maze size, generated sprite structure, and upper-RAM binary budget.
+- `tools/check_project.py` deterministic checks for maze dimensions/content, generated sprite structure/pointer tables, and upper-RAM binary budget.
 - Persistent engineering incident registry at `docs/INCIDENTS.md`.
 - Repeatable verification protocol at `docs/TESTING.md`, covering static checks, build, emulator controls/rendering, cycle timing, hardware tests, and incident-closure rules.
 - Rendering architecture ADR at `docs/adr/0001-rendering-architecture.md`.
@@ -33,11 +33,14 @@ Use concise entries grouped under `Added`, `Changed`, `Fixed`, `Verification`, a
 
 - Main loop now commits prepared rendering immediately after `HALT`, then runs input/game update/render preparation outside the short screen-write phase.
 - Maze is drawn once at startup instead of being redrawn in full every gameplay frame.
+- Dirty-cell restoration now performs a single bitmap+attribute cell draw instead of redundantly writing the attribute twice.
 - Player module now owns simulation only; raw screen drawing moved to the renderer.
 - Moving actors no longer write Spectrum attributes in the render hot path.
 - Empty walkable maze cells use yellow ink on black paper so the yellow player remains visible while crossing empty/pellet cells.
 - Build pipeline now generates sprite assets and runs structural checks before assembly, then checks final binary size/headroom.
 - Renderer chooses animation direction from persistent facing state rather than defaulting to right when `Pac_Dir=0`.
+- Removed obsolete hand-written `Pac_FrameTable*` runtime pointer tables; generated phase tables are now the single actor-render lookup path.
+- Structural validation now requires exactly 20 maze rows of 28 cells, 160 unique generated phases, 8 scanlines x 4 bytes per phase, and exact 40-pointer tables per direction.
 
 ### Fixed
 
@@ -49,14 +52,17 @@ Use concise entries grouped under `Added`, `Changed`, `Fixed`, `Verification`, a
 ### Verification
 
 - Python generator includes internal invariants for phase-0 and mask generation.
-- Structural checks require exactly 560 maze cells and 160 generated player sprite phases.
-- A local syntax/math smoke of the generator logic passed on 2026-08-25.
+- Static validation confirms the canonical source contains 20 player frames of 8 rows and expands to 160 shifted phases (5,120 mask/image bytes plus pointer tables).
+- Static validation confirms the maze remains exactly 20 x 28 = 560 cells.
+- The 192-line Spectrum bitmap-address formula was checked across all Y values against the standard address equation.
+- Dirty-cell modelling for current cardinal 8x8 player movement stays bounded (at most two cells in the current movement model; the renderer remains provisioned for future multi-actor cases).
 - Full canonical assembly/TAP build could not be executed in the current assistant execution environment because `sjasmplus` and `bin2tap.py` are not installed; related tasks remain `VERIFY`.
 - Emulator/hardware smoke testing and cycle-aware renderer profiling remain required before the related incidents can be closed.
 
 ### Known limitations
 
 - Current renderer prepares/draws the player only; the actor descriptor/dirty-cell model is intended to be extended to enemies.
+- Current generated masks infer transparency from zero bits in the canonical bitmap. This is correct for present Pac art, but future sprites needing opaque zero-valued pixels require explicit canonical mask support before use.
 - Actor color is currently constrained by static maze attributes; distinct per-ghost colors are intentionally deferred.
 - Exact 50 Hz timing budget has not yet been measured in a cycle-aware emulator.
 
