@@ -4,6 +4,11 @@
 ; Setup entry points prepare snapshots for measured commits with different
 ; previous dirty-cell counts. tools/run_perf_tests.sh executes setup first,
 ; then starts a second cycle-aware trace exactly at PERF_MEASURE_START.
+;
+; IMPORTANT: this harness is emitted as a raw binary. ORG alone changes the
+; logical address in sjasmplus but does not insert bytes into a raw file. Fixed
+; measurement entry points therefore use DS padding so raw-file offset and Z80
+; address stay identical. See INC-2026-006.
 
         ORG 32768
         JP Perf_CommonSetup
@@ -41,7 +46,8 @@ Perf_Init:
 ; Common case: previous frame was byte/cell aligned (1 dirty cell).
 ; Prepared frame is phase 1. Measured commit restores 1 cell and draws 1 actor.
 ; ------------------------------------------------------------
-        ORG PERF_COMMON_SETUP
+        ASSERT $ < PERF_COMMON_SETUP
+        DS PERF_COMMON_SETUP - $, 0
 Perf_CommonSetup:
         CALL Perf_Init
         LD A, 24
@@ -61,7 +67,8 @@ Perf_CommonSetup:
 ; Current cardinal-player worst case: previous frame crosses one byte boundary
 ; while Y remains aligned, so 2 maze cells must be restored.
 ; ------------------------------------------------------------
-        ORG PERF_DIRTY2_SETUP
+        ASSERT $ < PERF_DIRTY2_SETUP
+        DS PERF_DIRTY2_SETUP - $, 0
 Perf_Dirty2Setup:
         CALL Perf_Init
         LD A, 25
@@ -83,7 +90,8 @@ Perf_Dirty2Setup:
 ; Player gameplay does not currently move diagonally; this measures renderer
 ; headroom for future actors/animation paths using both sub-cell axes.
 ; ------------------------------------------------------------
-        ORG PERF_DIRTY4_SETUP
+        ASSERT $ < PERF_DIRTY4_SETUP
+        DS PERF_DIRTY4_SETUP - $, 0
 Perf_Dirty4Setup:
         CALL Perf_Init
         LD A, 25
@@ -101,9 +109,17 @@ Perf_Dirty4Setup:
 ; ------------------------------------------------------------
 ; This exact range is the measurement target.
 ; ------------------------------------------------------------
-        ORG PERF_MEASURE_START
+        ASSERT $ < PERF_MEASURE_START
+        DS PERF_MEASURE_START - $, 0
 Perf_MeasureStart:
         CALL Render_Commit
         JP PERF_MEASURE_STOP
+
+; Ensure the raw file actually contains the measured stop address so trace.py
+; cannot accidentally run into implicit zero-filled memory beyond EOF.
+        ASSERT $ < PERF_MEASURE_STOP
+        DS PERF_MEASURE_STOP - $, 0
+Perf_MeasureStop:
+        NOP
 
         END
