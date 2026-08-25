@@ -28,12 +28,12 @@ Input_Read:
     BIT 0, A
     JR Z, .dir_right
 
-    LD BC, $F7FE            ; 1-5 row: supporto cursor 5 = left
+    LD BC, $F7FE            ; cursor 5 = left
     IN A, (C)
     BIT 4, A
     JR Z, .dir_left
 
-    LD BC, $EFFE            ; 6-0 row: 6=down, 7=up, 8=right
+    LD BC, $EFFE            ; cursor 6=down, 7=up, 8=right
     IN A, (C)
     BIT 4, A
     JR Z, .dir_down
@@ -48,7 +48,7 @@ Input_Read:
 .read_kempston:
     LD BC, PORT_KEMPSTON
     IN A, (C)
-    BIT 3, A                ; up
+    BIT 3, A                ; up, active high
     JR NZ, .dir_up
     BIT 2, A                ; down
     JR NZ, .dir_down
@@ -60,30 +60,34 @@ Input_Read:
     RET
 
 .read_sinclair1:
-    LD BC, $EFFE            ; Sinclair 1 (6-0)
+    ; Interface 2 joystick 1 maps to keyboard row 6-0, active low:
+    ; 6=left, 7=right, 8=down, 9=up, 0=fire.
+    LD BC, $EFFE
     IN A, (C)
-    BIT 4, A                ; 6 = up
-    JR Z, .dir_up
-    BIT 3, A                ; 7 = down
-    JR Z, .dir_down
-    BIT 2, A                ; 8 = left
+    BIT 4, A                ; 6 = left
     JR Z, .dir_left
-    BIT 1, A                ; 9 = right
+    BIT 3, A                ; 7 = right
     JR Z, .dir_right
+    BIT 2, A                ; 8 = down
+    JR Z, .dir_down
+    BIT 1, A                ; 9 = up
+    JR Z, .dir_up
     XOR A
     RET
 
 .read_sinclair2:
-    LD BC, $F7FE            ; Sinclair 2 (1-5)
+    ; Interface 2 joystick 2 maps to keyboard row 1-5, active low:
+    ; 1=left, 2=right, 3=down, 4=up, 5=fire.
+    LD BC, $F7FE
     IN A, (C)
-    BIT 0, A                ; 1 = up
-    JR Z, .dir_up
-    BIT 1, A                ; 2 = down
-    JR Z, .dir_down
-    BIT 2, A                ; 3 = left
+    BIT 0, A                ; 1 = left
     JR Z, .dir_left
-    BIT 3, A                ; 4 = right
+    BIT 1, A                ; 2 = right
     JR Z, .dir_right
+    BIT 2, A                ; 3 = down
+    JR Z, .dir_down
+    BIT 3, A                ; 4 = up
+    JR Z, .dir_up
 
     XOR A
     RET
