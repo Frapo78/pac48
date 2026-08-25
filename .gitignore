@@ -7,6 +7,10 @@ build/
 # generated assembly assets
 src/generated/
 
+# Python tooling
+__pycache__/
+*.pyc
+
 # macOS
 .DS_Store
 
