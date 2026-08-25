@@ -65,6 +65,7 @@ Player_TryRequestedDir:
     RET Z
     LD A, (Pac_ReqDir)
     LD (Pac_Dir), A
+    LD (Pac_FacingDir), A
     RET
 
 ; Out: A=1 se la direzione corrente puo' continuare, A=0 se bloccata.
