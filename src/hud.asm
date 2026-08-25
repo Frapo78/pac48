@@ -3,17 +3,18 @@
 ; Startup-only version/build stamp
 ; ==========================================
 ;
-; Uses the ZX Spectrum ROM 8x8 system font at $3C00. The maze begins at
-; character row 2, so row 0 is reserved for a readable build identity.
-; The stamp is drawn once at startup and is not part of the frame hot path.
+; Uses the ZX Spectrum ROM 8x8 system font. Printable glyph data starts at
+; $3D00 for ASCII 32; $3C00 is the CHARS-style base only when the full ASCII
+; code is used as the offset. We subtract 32 below, so $3D00 is authoritative.
+; The maze begins at character row 2, so row 0 is reserved for build identity.
 
-ROM_FONT_ADDR   EQU $3C00
+ROM_FONT_ADDR   EQU $3D00
 HUD_Attr        EQU 64 | COLOR_WHITE      ; BRIGHT white INK on black PAPER
 HUD_LabelRow    EQU 0
 
 HUD_CursorCell: DB 0
 
-; Draw generated label, e.g. "V0.3.6 B1A2B3C", centered in character cells.
+; Draw generated label, e.g. "V0.3.7 B1A2B3C", centered in character cells.
 HUD_DrawBuildStamp:
     LD A, Build_ScreenLabelColumn
     LD (HUD_CursorCell), A
