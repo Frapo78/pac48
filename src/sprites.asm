@@ -1,6 +1,10 @@
 ; =========================
-; SPRITES E DATI GRAFICI
+; SPRITES E DATI GRAFICI CANONICI
 ; =========================
+;
+; I frame Pac_* sono la sorgente editabile. tools/gen_shifted_sprites.py
+; genera le tabelle masked/pre-shifted usate dal renderer; non aggiungere qui
+; una seconda tabella runtime per gli attori mobili.
 
 ; Sprite vuoto: cancella un tile 8x8
 Sprite_Empty:
@@ -13,7 +17,8 @@ Sprite_Empty:
     DEFB %00000000
     DEFB %00000000
 
-; Sprite muro: blocco pieno con bordo morbido
+; Sprite muro disponibile per future varianti bitmap.
+; Il maze corrente rende i muri con PAPER/INK blu e bitmap vuota.
 Sprite_Wall:
     DEFB %11111111
     DEFB %11111111
@@ -24,7 +29,7 @@ Sprite_Wall:
     DEFB %11111111
     DEFB %11111111
 
-; Sprite pallino: dot centrale minimale
+; Sprite pallino
 Sprite_Pellet:
     DEFB %00000000
     DEFB %00011000
@@ -35,7 +40,7 @@ Sprite_Pellet:
     DEFB %00000000
     DEFB %00000000
 
-; Fotogrammi Pac-Man: animazione apertura bocca (destra)
+; ---- Pac-Man destra -------------------------------------------------
 Pac_Frame0:
     DEFB %00111100
     DEFB %01111110
@@ -86,6 +91,7 @@ Pac_Frame4:
     DEFB %00110000
     DEFB %00000000
 
+; ---- Pac-Man sinistra -----------------------------------------------
 Pac_FrameLeft0:
     DEFB %00111100
     DEFB %01111111
@@ -136,6 +142,7 @@ Pac_FrameLeft4:
     DEFB %00001100
     DEFB %00000000
 
+; ---- Pac-Man su -----------------------------------------------------
 Pac_FrameUp0:
     DEFB %00111100
     DEFB %01111110
@@ -186,6 +193,7 @@ Pac_FrameUp4:
     DEFB %00111100
     DEFB %00000000
 
+; ---- Pac-Man giu ----------------------------------------------------
 Pac_FrameDown0:
     DEFB %00111100
     DEFB %01111110
@@ -235,12 +243,3 @@ Pac_FrameDown4:
     DEFB %00000000
     DEFB %00000000
     DEFB %00000000
-
-Pac_FrameTableRight:
-    DW Pac_Frame0, Pac_Frame1, Pac_Frame2, Pac_Frame3, Pac_Frame4, Pac_Frame3, Pac_Frame2, Pac_Frame1
-Pac_FrameTableLeft:
-    DW Pac_FrameLeft0, Pac_FrameLeft1, Pac_FrameLeft2, Pac_FrameLeft3, Pac_FrameLeft4, Pac_FrameLeft3, Pac_FrameLeft2, Pac_FrameLeft1
-Pac_FrameTableUp:
-    DW Pac_FrameUp0, Pac_FrameUp1, Pac_FrameUp2, Pac_FrameUp3, Pac_FrameUp4, Pac_FrameUp3, Pac_FrameUp2, Pac_FrameUp1
-Pac_FrameTableDown:
-    DW Pac_FrameDown0, Pac_FrameDown1, Pac_FrameDown2, Pac_FrameDown3, Pac_FrameDown4, Pac_FrameDown3, Pac_FrameDown2, Pac_FrameDown1
