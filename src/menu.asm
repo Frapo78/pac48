@@ -3,14 +3,12 @@ Menu_Run:
     CALL $0DAF               ; ROM CLS
     CALL Video_Clear         ; azzera bitmap/attributi
 
+    ; Version comes from generated/build_info.asm, which itself comes from
+    ; the canonical VERSION file. Do not hardcode a semantic version here.
+    LD HL, Build_MenuTitle
+    CALL Menu_PrintZ
     LD HL, Menu_Text
-.print_loop:
-    LD A, (HL)
-    OR A
-    JR Z, .wait_input
-    RST 16                  ; stampa carattere
-    INC HL
-    JR .print_loop
+    CALL Menu_PrintZ
 
 .wait_input:
 .wait_key:
@@ -61,8 +59,17 @@ Menu_Run:
     JR NZ, .wait_release
     RET
 
+; In: HL=zero-terminated ROM-printable text.
+Menu_PrintZ:
+.print_loop:
+    LD A, (HL)
+    OR A
+    RET Z
+    RST 16
+    INC HL
+    JR .print_loop
+
 Menu_Text:
-    DB "PAC48 0.3.4-beta", 13
     DB "Seleziona controllo", 13
     DB "1) Q/A/O/P", 13
     DB "2) Kempston", 13

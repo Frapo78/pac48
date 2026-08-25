@@ -7,12 +7,14 @@
 
         JP START
 
-; ---- include order: low-level/state -> data -> gameplay -> renderer
+; ---- include order: low-level/state -> generated metadata -> gameplay/render
         INCLUDE "config.asm"
         INCLUDE "memory.asm"
+        INCLUDE "generated/build_info.asm"
         INCLUDE "menu.asm"
         INCLUDE "input.asm"
         INCLUDE "video.asm"
+        INCLUDE "hud.asm"
         INCLUDE "sprites.asm"
         INCLUDE "generated/pac_shifted.asm"
         INCLUDE "maze.asm"
@@ -30,6 +32,7 @@ START:
         CALL Menu_Run
         CALL Video_Clear
         CALL Video_InitLineTable
+        CALL HUD_DrawBuildStamp
 
         ; The spawn tile is considered occupied by Pac at level start, so its
         ; normal pellet is consumed before the initial maze is drawn.

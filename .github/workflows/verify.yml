@@ -55,18 +55,27 @@ jobs:
           chmod +x tools/build.sh
           ./tools/build.sh
 
-      - name: Verify expected outputs
+      - name: Verify expected outputs and build identity
         run: |
+          set -euo pipefail
           test -s build/pac48.bin
           test -s build/pac48.tap
           VERSION="$(tr -d '[:space:]' < VERSION)"
+          BUILD_ID="$(tr -d '[:space:]' < build/build_id.txt)"
+          EXPECTED_BUILD_ID="$(printf '%s' "${GITHUB_SHA:0:7}" | tr '[:lower:]' '[:upper:]')"
+          test "$BUILD_ID" = "$EXPECTED_BUILD_ID"
           test -s "build/pac48-${VERSION}.tap"
+          test -s "build/pac48-${VERSION}-b${BUILD_ID}.tap"
           test -s src/generated/pac_shifted.asm
+          test -s src/generated/build_info.asm
+          test -s build/screen_label.txt
+          grep -F "B${BUILD_ID}" build/screen_label.txt
           test -s build/runtime_harness.trace.log
           test -s build/perf_results.txt
           test -s build/tap_load.z80
           test -s build/tap_load.log
-          wc -c build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap"
+          wc -c build/pac48.bin build/pac48.tap "build/pac48-${VERSION}.tap" "build/pac48-${VERSION}-b${BUILD_ID}.tap"
+          cat build/screen_label.txt
           cat build/perf_results.txt
           tail -n 30 build/tap_load.log
 
@@ -75,23 +84,33 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
+          BUILD_ID="$(tr -d '[:space:]' < build/build_id.txt)"
+          SCREEN_LABEL="$(tr -d '\r\n' < build/screen_label.txt)"
           mkdir -p release
           cp build/pac48.tap release/pac48-latest.tap
           cp "build/pac48-${VERSION}.tap" "release/pac48-${VERSION}.tap"
+          cp "build/pac48-${VERSION}-b${BUILD_ID}.tap" "release/pac48-${VERSION}-b${BUILD_ID}.tap"
           (
             cd release
-            sha256sum pac48-latest.tap "pac48-${VERSION}.tap" > SHA256SUMS.txt
+            sha256sum \
+              pac48-latest.tap \
+              "pac48-${VERSION}.tap" \
+              "pac48-${VERSION}-b${BUILD_ID}.tap" \
+              > SHA256SUMS.txt
           )
           {
             echo "PAC48 latest verified build"
             echo
             echo "Version: ${VERSION}"
+            echo "Build ID: ${BUILD_ID}"
+            echo "On-screen stamp: ${SCREEN_LABEL}"
             echo "Commit: ${GITHUB_SHA}"
             echo "Workflow: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
             echo "Target: ZX Spectrum 48K"
             echo
             echo "Verification completed before publication:"
             echo "- deterministic structural and architecture checks"
+            echo "- generated version/build identity checks"
             echo "- renderer reference-model tests"
             echo "- sjasmplus assembly with zero errors/warnings"
             echo "- headless 48K Z80 runtime harness"
@@ -102,7 +121,8 @@ jobs:
             echo "Render_Commit timing evidence:"
             sed 's/^/- /' build/perf_results.txt
             echo
-            echo "Use pac48-latest.tap for the stable latest-build filename."
+            echo "For screenshots/manual tests prefer pac48-${VERSION}-b${BUILD_ID}.tap."
+            echo "pac48-latest.tap remains the stable convenience filename."
           } > release/BUILD-INFO.txt
 
       - name: Upload verified build and evidence artifacts
@@ -115,7 +135,10 @@ jobs:
             build/pac48.bin
             build/pac48.tap
             build/pac48-*.tap
+            build/build_id.txt
+            build/screen_label.txt
             src/generated/pac_shifted.asm
+            src/generated/build_info.asm
             build/runtime_harness.trace.log
             build/runtime_harness.z80
             build/perf_results.txt
@@ -155,10 +178,13 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
+          BUILD_ID="$(printf '%s' "${GITHUB_SHA:0:7}" | tr '[:lower:]' '[:upper:]')"
           test -s release/pac48-latest.tap
           test -s "release/pac48-${VERSION}.tap"
+          test -s "release/pac48-${VERSION}-b${BUILD_ID}.tap"
           test -s release/SHA256SUMS.txt
           test -s release/BUILD-INFO.txt
+          grep -F "Build ID: ${BUILD_ID}" release/BUILD-INFO.txt
           (
             cd release
             sha256sum --check SHA256SUMS.txt
@@ -170,6 +196,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(tr -d '[:space:]' < VERSION)"
+          BUILD_ID="$(printf '%s' "${GITHUB_SHA:0:7}" | tr '[:lower:]' '[:upper:]')"
           SHORT_SHA="${GITHUB_SHA:0:12}"
           TAG="build-${SHORT_SHA}"
 
@@ -177,11 +204,12 @@ jobs:
             gh release create "$TAG" \
               release/pac48-latest.tap \
               "release/pac48-${VERSION}.tap" \
+              "release/pac48-${VERSION}-b${BUILD_ID}.tap" \
               release/SHA256SUMS.txt \
               release/BUILD-INFO.txt \
               --repo "$GITHUB_REPOSITORY" \
               --target "$GITHUB_SHA" \
-              --title "PAC48 latest verified build (${VERSION})" \
+              --title "PAC48 latest verified build (${VERSION}, ${BUILD_ID})" \
               --notes-file release/BUILD-INFO.txt \
               --latest
           else
