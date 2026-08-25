@@ -306,6 +306,10 @@ Maze_CanMove:
 ; upper blocks, central-house silhouette, symmetric lower routes and the
 ; below-centre Pac start area. Empty cells (2) reserve non-pellet central space.
 ;
+; Row 09 is now the functional side tunnel: its left and right edge cells are
+; linked by player wrap logic. The central eight wall cells remain reserved for
+; the future ghost-house core.
+;
 ; This is an independently encoded landscape adaptation, not arcade ROM data.
 ; Source/research rationale is documented in docs/PACMAN_REFERENCE.md.
 ;
@@ -330,8 +334,8 @@ Maze_Map:
     DEFB 1,1,1,1,1,1,0,1,1,2,2,2,2,2,2,2,2,2,2,1,1,0,1,1,1,1,1,1
     ; 08  ######.## ######## ##.######
     DEFB 1,1,1,1,1,1,0,1,1,2,1,1,1,1,1,1,1,1,2,1,1,0,1,1,1,1,1,1
-    ; 09  ######.   ########   .######
-    DEFB 1,1,1,1,1,1,0,2,2,2,1,1,1,1,1,1,1,1,2,2,2,0,1,1,1,1,1,1
+    ; 09  .......   ########   .......   <- functional side tunnel
+    DEFB 0,0,0,0,0,0,0,2,2,2,1,1,1,1,1,1,1,1,2,2,2,0,0,0,0,0,0,0
     ; 10  ######.## ######## ##.######
     DEFB 1,1,1,1,1,1,0,1,1,2,1,1,1,1,1,1,1,1,2,1,1,0,1,1,1,1,1,1
     ; 11  ######.##          ##.######
