@@ -20,7 +20,6 @@
         INCLUDE "../src/sprites.asm"
         INCLUDE "../src/generated/pac_shifted.asm"
         INCLUDE "../src/maze.asm"
-        INCLUDE "../src/pellets.asm"
         INCLUDE "../src/player.asm"
         INCLUDE "../src/render.asm"
 
