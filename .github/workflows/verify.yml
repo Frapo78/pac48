@@ -161,22 +161,30 @@ jobs:
           SHORT_SHA="${GITHUB_SHA:0:12}"
           TAG="build-${SHORT_SHA}"
 
-          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              release/pac48-latest.tap \
+              "release/pac48-${VERSION}.tap" \
+              release/SHA256SUMS.txt \
+              release/BUILD-INFO.txt \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "PAC48 latest verified build (${VERSION})" \
+              --notes-file release/BUILD-INFO.txt \
+              --latest
+          else
             echo "Release $TAG already exists; leaving verified release unchanged."
-            exit 0
           fi
-
-          gh release create "$TAG" \
-            release/pac48-latest.tap \
-            "release/pac48-${VERSION}.tap" \
-            release/SHA256SUMS.txt \
-            release/BUILD-INFO.txt \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "PAC48 latest verified build (${VERSION})" \
-            --notes-file release/BUILD-INFO.txt \
-            --latest
 
           gh release view "$TAG" \
             --repo "$GITHUB_REPOSITORY" \
-            --json tagName,isLatest,url,assets
+            --json tagName,url,assets
+
+          LATEST_TAG="$(gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --limit 20 \
+            --json tagName,isLatest \
+            --jq '.[] | select(.isLatest) | .tagName' \
+            | head -n1)"
+          test "$LATEST_TAG" = "$TAG"
+          echo "Verified latest release tag: $LATEST_TAG"
