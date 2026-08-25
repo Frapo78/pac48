@@ -28,10 +28,11 @@ Maze_OffsetX    EQU 2
 Maze_OffsetY    EQU 2
 
 ; Functional centre tunnel. The maze stays 28 cells wide and the actor wraps
-; between the two edge cells on this row.
+; between the two edge cells on this row. Keep endpoint coordinates numeric so
+; build-time topology tools can parse the same constants used by Z80 code.
 Maze_TunnelRow         EQU 9
 Maze_TunnelLeftX       EQU 0
-Maze_TunnelRightX      EQU Maze_Width - 1
+Maze_TunnelRightX      EQU 27
 Maze_TunnelPixelY      EQU (Maze_OffsetY + Maze_TunnelRow) * 8
 Maze_TunnelLeftPixelX  EQU (Maze_OffsetX + Maze_TunnelLeftX) * 8
 Maze_TunnelRightPixelX EQU (Maze_OffsetX + Maze_TunnelRightX) * 8
