@@ -92,11 +92,14 @@ echo "  Build ID: $BUILD_ID"
 echo "  Screen stamp: $SCREEN_LABEL"
 python3 tools/gen_shifted_sprites.py src/sprites.asm "$GENERATED_SPRITES"
 
-echo "[2/9] Running structural, architecture and build-identity checks..."
+echo "[2/9] Running structural, architecture, topology and build-identity checks..."
 python3 tools/check_project.py \
   --maze src/maze.asm \
   --generated-sprites "$GENERATED_SPRITES" \
   --source-root src
+python3 tools/check_maze_topology.py \
+  --maze src/maze.asm \
+  --config src/config.asm
 python3 tools/check_build_identity.py \
   --version VERSION \
   --build-info "$GENERATED_BUILD_INFO" \

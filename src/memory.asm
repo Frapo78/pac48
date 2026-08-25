@@ -6,22 +6,22 @@ FrameCounter:  DB 0
 
 GameState:     DB 0   ; 0=menu, 1=play, 2=gameover
 
-Pac_X:         DB 1
-Pac_Y:         DB 1
-Pac_PixelX:    DB 24
-Pac_PixelY:    DB 24
+Pac_X:         DB Pac_StartX
+Pac_Y:         DB Pac_StartY
+Pac_PixelX:    DB Pac_StartPixelX
+Pac_PixelY:    DB Pac_StartPixelY
 Pac_Dir:       DB 0
 Pac_ReqDir:    DB 0
-Pac_FacingDir: DB 4   ; ultima direzione valida per l'animazione, default destra
+Pac_FacingDir: DB 3   ; arcade-style initial facing: left
 
 Input_Mode:     DB 0   ; 0=Q/A/O/P, 1=Kempston, 2=Sinclair 1, 3=Sinclair 2
-Input_HeldMask: DB 0   ; tutte le direzioni cardinali attualmente premute
+Input_HeldMask: DB 0   ; physical cardinal directions held this frame
 
 ; ------------------------------------------
 ; Renderer persistent/prepared state
 ; ------------------------------------------
-Render_PlayerX:        DB 24
-Render_PlayerY:        DB 24
+Render_PlayerX:        DB Pac_StartPixelX
+Render_PlayerY:        DB Pac_StartPixelY
 Render_PlayerPhase:    DB 0
 Render_PlayerSprite:   DW 0
 
