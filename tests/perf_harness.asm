@@ -1,13 +1,18 @@
 ; ============================================================
 ; PAC48 Render_Commit performance harness
 ; ============================================================
-; The harness is deliberately continuous in raw-file memory. No fixed ORG gaps
-; are used. sjasmplus exports the real addresses of setup/measure labels and
-; tools/run_perf_tests.sh drives trace.py using those exported addresses.
-; This prevents logical-PC/raw-offset mismatches (INC-2026-006).
+; This harness is deliberately continuous in raw-file memory.
+;
+; Performance state is injected directly into the raw binary by
+; tools/run_perf_tests.sh using SkoolKit trace.py --poke/--reg/--state.
+; No intermediate snapshot is written or reloaded. This guarantees that the
+; bytes executed at Perf_MeasureStart are exactly the bytes assembled here.
+;
+; INC-2026-006 documents why snapshot round-tripping is forbidden for exact
+; instruction-range timing evidence.
 
         ORG 32768
-        JP Perf_CommonSetup
+        JP Perf_MeasureStart
 
         INCLUDE "../src/config.asm"
         INCLUDE "../src/memory.asm"
@@ -18,80 +23,13 @@
         INCLUDE "../src/player.asm"
         INCLUDE "../src/render.asm"
 
-; Shared deterministic environment.
-Perf_Init:
-        DI
-        LD SP, 64000
-        CALL Video_Clear
-        CALL Video_InitLineTable
-        CALL Maze_Draw
-        CALL Render_Init
-        XOR A
-        LD (FrameCounter), A
-        LD A, 4
-        LD (Pac_FacingDir), A
-        RET
-
 ; ------------------------------------------------------------
-; Common case: previous frame was byte/cell aligned (1 dirty cell).
-; Prepared frame is phase 1. Measured commit restores 1 cell and draws 1 actor.
-; ------------------------------------------------------------
-Perf_CommonSetup:
-        CALL Perf_Init
-        LD A, 24
-        LD (Pac_PixelX), A
-        LD (Pac_PixelY), A
-        CALL Render_Prepare
-        CALL Render_Commit
-
-        LD A, 25
-        LD (Pac_PixelX), A
-        LD A, 24
-        LD (Pac_PixelY), A
-        CALL Render_Prepare
-        JP Perf_MeasureStart
-
-; ------------------------------------------------------------
-; Current cardinal-player worst case: previous frame crosses one byte boundary
-; while Y remains aligned, so 2 maze cells must be restored.
-; ------------------------------------------------------------
-Perf_Dirty2Setup:
-        CALL Perf_Init
-        LD A, 25
-        LD (Pac_PixelX), A
-        LD A, 24
-        LD (Pac_PixelY), A
-        CALL Render_Prepare
-        CALL Render_Commit
-
-        LD A, 26
-        LD (Pac_PixelX), A
-        LD A, 24
-        LD (Pac_PixelY), A
-        CALL Render_Prepare
-        JP Perf_MeasureStart
-
-; ------------------------------------------------------------
-; General 8x8 arbitrary-position case: previous actor overlaps four cells.
-; Player gameplay does not currently move diagonally; this measures renderer
-; headroom for future actors/animation paths using both sub-cell axes.
-; ------------------------------------------------------------
-Perf_Dirty4Setup:
-        CALL Perf_Init
-        LD A, 25
-        LD (Pac_PixelX), A
-        LD (Pac_PixelY), A
-        CALL Render_Prepare
-        CALL Render_Commit
-
-        LD A, 26
-        LD (Pac_PixelX), A
-        LD (Pac_PixelY), A
-        CALL Render_Prepare
-        JP Perf_MeasureStart
-
-; ------------------------------------------------------------
-; This exact range is the measurement target.
+; Exact measured range. tools/run_perf_tests.sh prepares all state directly:
+; - Video_LineAddrTable
+; - Render_DirtyCount / Render_DirtyCells
+; - Render_NextDirtyCount / Render_NextDirtyCells
+; - Render_PlayerX / Render_PlayerY / Render_PlayerSprite
+; - SP and tstates
 ; ------------------------------------------------------------
 Perf_MeasureStart:
         CALL Render_Commit
@@ -99,10 +37,22 @@ Perf_MeasureStart:
 Perf_MeasureStop:
         NOP
 
-        EXPORT Perf_CommonSetup
-        EXPORT Perf_Dirty2Setup
-        EXPORT Perf_Dirty4Setup
+; Measurement wrapper.
         EXPORT Perf_MeasureStart
         EXPORT Perf_MeasureStop
+
+; Mutable renderer state injected by the profiler.
+        EXPORT Render_PlayerX
+        EXPORT Render_PlayerY
+        EXPORT Render_PlayerSprite
+        EXPORT Render_DirtyCount
+        EXPORT Render_NextDirtyCount
+        EXPORT Render_DirtyCells
+        EXPORT Render_NextDirtyCells
+        EXPORT Video_LineAddrTable
+
+; Representative generated player phases used by timing cases.
+        EXPORT Pac_Shifted_Right_F0_P1
+        EXPORT Pac_Shifted_Right_F0_P2
 
         END
