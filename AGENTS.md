@@ -2,7 +2,7 @@
 
 Machine-oriented rules for AI coding agents working on PAC48.
 
-PAC48 targets the ZX Spectrum 48K in Z80 assembly. The renderer architecture accepted in ADR 0001 is now implemented in source and is awaiting full assembly/emulator/timing verification.
+PAC48 targets the ZX Spectrum 48K in Z80 assembly. The renderer architecture accepted in ADR 0001 is implemented in source and is awaiting full assembly/emulator/timing verification.
 
 ## Mandatory reading order
 
@@ -12,12 +12,13 @@ Before any code change read:
 2. `docs/ARCHITECTURE.md`
 3. `docs/adr/0001-rendering-architecture.md`
 4. `docs/INCIDENTS.md`
-5. `CHANGELOG.md`
-6. `docs/TODO.md`
+5. `docs/TESTING.md`
+6. `CHANGELOG.md`
+7. `docs/TODO.md`
 
-`docs/TODO.md` is the canonical work queue. `docs/INCIDENTS.md` is the persistent failure/regression memory. Do not reconstruct priority or old mistakes from chat history when these files already contain the information.
+`docs/TODO.md` is the canonical work queue. `docs/INCIDENTS.md` is the persistent failure/regression memory. `docs/TESTING.md` defines the verification vocabulary and incident-closure evidence. Do not reconstruct priority or old mistakes from chat history when these files already contain the information.
 
-## Task, incident, and changelog discipline
+## Task, incident, changelog, and verification discipline
 
 - Use stable `P48-###` task IDs.
 - Work the highest-priority unblocked task unless the user explicitly selects another.
@@ -31,6 +32,7 @@ Before any code change read:
 - Never delete or renumber resolved incidents.
 - Every substantive incident must end with a regression guard, not only a prose explanation.
 - Update `CHANGELOG.md` under `Unreleased` for every meaningful code, build, architecture, verification, or documentation change.
+- Report verification using V0-V5 from `docs/TESTING.md`; never describe `NOT RUN` as passed.
 
 ## Hard target constraints
 
@@ -48,7 +50,7 @@ Before any code change read:
 
 ## Current rendering architecture
 
-Source now follows `docs/adr/0001-rendering-architecture.md`:
+Source follows `docs/adr/0001-rendering-architecture.md`:
 
 - persistent tilemap-backed maze;
 - full maze drawn once at level/startup, not per frame;
@@ -103,14 +105,17 @@ The build performs these mandatory layers:
 
 Do not invoke `sjasmplus src/main.asm` from a clean checkout before generating the sprite include. Prefer the canonical build script.
 
-Every code change:
+For every code change:
 
-1. must run `./tools/build.sh` when the required local tools exist;
-2. must record the exact missing tool if build cannot run;
-3. must run emulator/real-hardware checks when changing rendering, timing, controls, loader or gameplay;
-4. must update matching TODO verification notes;
-5. must update incident verification evidence when the work relates to an existing incident;
-6. must update `CHANGELOG.md`.
+1. run V0 static/source review;
+2. run V1 deterministic checks where applicable;
+3. run `./tools/build.sh` (V2) when required tools exist;
+4. record the exact missing tool when V2 cannot run;
+5. run V3 emulator/real-hardware checks when changing rendering, controls, loader or gameplay;
+6. run V4 cycle-aware checks for renderer performance work;
+7. update matching TODO verification notes;
+8. update incident verification evidence when the work relates to an existing incident;
+9. update `CHANGELOG.md`.
 
 Rendering work must ultimately be checked in a cycle-aware environment. Estimates are allowed during development but must be labelled estimates.
 
@@ -215,11 +220,12 @@ Keep keyboard, Kempston, Sinclair 1 and Sinclair 2 coherent. Sinclair physical m
 
 ## Maze rules
 
-- `Maze_Map` contains exactly `Maze_Width * Maze_Height` cells; build tooling enforces 560 cells.
+- `Maze_Map` contains exactly `Maze_Width * Maze_Height` cells; build tooling enforces 20 rows x 28 cells.
 - Maze state is the source of truth for persistent background.
 - Pellet/energizer changes must be maze-owned, not arbitrary screen edits.
 - `Maze_CanMove` owns wall/out-of-map decisions.
 - `Maze_Draw` is an initialization/level-redraw operation, not a normal per-frame operation.
+- Dirty restoration should perform the minimum required screen writes; do not reintroduce duplicate attribute writes.
 
 ## Rendering invariants
 
@@ -231,6 +237,7 @@ Keep keyboard, Kempston, Sinclair 1 and Sinclair 2 coherent. Sinclair physical m
 - Actor clipping/wrap decisions happen outside the hot loop when possible.
 - Generated sprite data uses `maskL,imageL,maskR,imageR` for each of 8 rows.
 - Renderer must know/record maximum dirty cells and actor count used for timing verification.
+- `Pac_FacingDir` preserves visual facing independently from `Pac_Dir` stopping at a wall.
 
 ## Generated-asset rules
 
@@ -239,7 +246,9 @@ Keep keyboard, Kempston, Sinclair 1 and Sinclair 2 coherent. Sinclair physical m
 - Canonical player art stays in `src/sprites.asm`.
 - Generated assembly is deterministic and ignored by Git.
 - A clean build must recreate all generated data before assembly.
-- If changing generator layout, update renderer expectations, structural checks, ADR/docs, and changelog together.
+- Generated phase pointer tables are authoritative; do not restore parallel hand-written mobile-actor tables.
+- Current masks infer transparency from zero bits in canonical Pac bitmaps. Before introducing art requiring opaque zero-valued pixels, implement `P48-016` explicit canonical mask support.
+- If changing generator layout, update renderer expectations, structural checks, ADR/docs, TODO, incidents when relevant, and changelog together.
 
 ## Forbidden without explicit approval/new ADR
 
@@ -260,7 +269,7 @@ For each implementation task report:
 - task ID;
 - files changed;
 - key interface/behavior change;
-- build result;
+- V0-V5 verification results;
 - emulator/hardware result when required;
 - timing/memory evidence when applicable;
 - incident IDs affected/created;
