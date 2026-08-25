@@ -45,25 +45,21 @@ Read before implementation:
 
 # Current verified baseline — 2026-08-25
 
-Owner V3 video of the real gameplay build confirms:
+Owner V3 video confirms the gameplay renderer is intact, Pac movement is fluid and normal pellets disappear persistently. The remaining control complaint was input semantics/turn buffering rather than frame-rate performance.
 
-- maze graphics are intact and readable;
-- Pac movement is fluid;
-- normal pellets disappear persistently as Pac traverses them;
-- the earlier report of a completely corrupted screen was caused by loading a stale/cached TAP, not by the collision/pellet integration (`INC-2026-010`).
+Current verified release:
 
-Current verified release after version/build identity work:
-
-- semantic version: `0.3.5-beta`;
-- commit: `91e4fcdb944972cb38476f1e1e21ff6d613df4c3`;
-- build ID: `91E4FCD`;
-- on-screen stamp: `V0.3.5 B91E4FCD`;
-- tag: `build-91e4fcdb9449`;
-- CI run: `32805223975` — PASS;
-- TAP size: 8903 bytes;
-- TAP SHA-256: `d792d7765591dcbf435faf2d718ec200c35dcd7fffe99c01305ce5743025c12b`;
-- preferred immutable/manual-test filename: `pac48-0.3.5-beta-b91E4FCD.tap`;
+- semantic version: `0.3.6-beta`;
+- commit: `3cc091e0fa3fc3e65fef16382dec25768259e44b`;
+- build ID: `3CC091E`;
+- on-screen stamp: `V0.3.6 B3CC091E` rendered with the ZX Spectrum ROM 8x8 system font;
+- tag: `build-3cc091e0fa3f`;
+- CI run: `32806218254` — PASS;
+- TAP size: 8882 bytes;
+- TAP SHA-256: `8d340ddf14db9da5ac1b8c3d5786aacd242da2db1092e61e3e3cc6a7c0708ef8`;
+- preferred immutable/manual-test filename: `pac48-0.3.6-beta-b3CC091E.tap`;
 - fresh 48K TAP load reaches `$8000`;
+- dedicated Z80 control-semantics harness: PASS;
 - `Render_Commit` remains 4341 / 5497 / 9184 T-states for dirty1 / dirty2 / dirty4.
 
 ---
@@ -72,7 +68,7 @@ Current verified release after version/build identity work:
 
 Recommended order:
 
-`P48-029 V3 -> P48-030 V3 -> P48-027 -> P48-028 -> P48-026/P48-023 -> P48-019 -> P48-020/021/022 -> broader P48-009`
+`P48-029 V3 -> P48-030 V3 -> P48-028 V3 -> P48-027 -> P48-026/P48-023 -> P48-019 -> P48-020/021/022 -> broader P48-009`
 
 ---
 
@@ -179,35 +175,43 @@ The current `Maze_Map` has 264 walkable cells, but only 246 are connected to the
 
 ## P48-028 — Make joystick turning behave like a queued arcade turn
 
-- **Status:** `READY`
+- **Status:** `VERIFY`
 - **Priority:** `P0`
 - **Type:** control feel / input semantics
-- **Files:** `src/input.asm`, `src/player.asm`, deterministic input/player tests
-- **Depends on:** none
+- **Files:** `src/input.asm`, `src/player.asm`, `tests/control_harness.asm`, `tools/run_control_tests.sh`
+- **Incident:** `INC-2026-012`
+- **Implemented in:** `3cc091e0fa3fc3e65fef16382dec25768259e44b`
 
-### Symptom
+### Implemented
 
-Around some corridor exits Pac feels "stuck". Example expectation: while moving horizontally, holding `down + right` should queue `down` and Pac should take the first legal downward opening automatically. Equivalent behavior is required for every direction/junction combination.
+- physical directions are first collected as a simultaneous four-bit mask instead of being collapsed immediately by fixed priority;
+- while travelling horizontally, a vertical component is treated as the queued turn; while travelling vertically, a horizontal component is treated as the queued turn;
+- holding only the current travel direction returns `0`, so it cannot erase an already queued perpendicular turn;
+- holding a diagonal naturally alternates the desired perpendicular axis after each successful turn, matching arcade-style diagonal steering;
+- 180-degree reversals are applied immediately inside the current corridor instead of waiting for the next 8-pixel node;
+- 90-degree turns remain grid/legal-opening constrained, preserving collision safety;
+- semantics are shared by Kempston, keyboard/cursors and Sinclair modes.
 
-### Current weakness
+### Deterministic evidence
 
-`Input_Read` collapses simultaneous directions to a single result using fixed priority, while `Player_TryRequestedDir` only executes a requested turn at exact 8-pixel alignment. This combination can lose the intended perpendicular turn or miss an opening if the request arrives just after the exact node.
+The dedicated Z80 control harness verifies:
 
-### Resolution plan
+- right travel + down/right => DOWN request;
+- down travel + down/right => RIGHT request;
+- current-direction-only input does not erase a queued turn;
+- symmetric up/left case;
+- opposite cardinal input remains valid;
+- mid-cell 180-degree reversal changes direction immediately and moves one pixel safely.
 
-- retain a true requested-turn queue independently from the current travel direction;
-- when current+perpendicular directions are held together, prioritize the perpendicular component as the queued turn;
-- preserve the queued turn until the first legal junction rather than replacing it each frame with the current travel direction;
-- evaluate a small node lookahead/grace or deterministic snap-to-grid at a legal turn so input just before/around a junction feels arcade-like without allowing wall clipping;
-- implement the same semantic model for Kempston, QAOP/cursors and Sinclair modes where simultaneous inputs are representable.
+CI run `32806218254`: PASS.
 
 ### Acceptance
 
-- [ ] right + down while travelling horizontally turns down at the first legal opening;
-- [ ] left/right/up/down symmetric cases pass;
-- [ ] queued turn survives several blocked cells before becoming legal;
-- [ ] no wall clipping or diagonal physical movement is introduced;
-- [ ] owner V3 describes junction control as immediate/predictable rather than stuck.
+- [x] direction-aware diagonal semantics pass Z80 tests;
+- [x] current direction no longer overwrites queued turns;
+- [x] immediate reversal passes Z80 test;
+- [x] no diagonal physical movement is introduced;
+- [ ] V3: owner confirms first-opening turns feel immediate/predictable rather than sluggish/stuck.
 
 ---
 
@@ -221,7 +225,7 @@ Around some corridor exits Pac feels "stuck". Example expectation: while moving 
 
 ### Implemented
 
-The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Active-high FIRE bit 4 selects `Input_Mode=1` and starts the game as Kempston. `tools/check_build_identity.py` now guards this behavior structurally.
+The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Active-high FIRE bit 4 selects `Input_Mode=1` and starts the game as Kempston. `tools/check_build_identity.py` guards this behavior structurally.
 
 ### Acceptance
 
@@ -237,17 +241,18 @@ The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Ac
 - **Priority:** `P1`
 - **Type:** release identity / visual diagnostics
 - **Files:** `VERSION`, `tools/build.sh`, `tools/check_build_identity.py`, `src/generated/build_info.asm`, `src/hud.asm`, `src/main.asm`, `src/menu.asm`, release workflow
-- **Implemented in:** `91e4fcdb944972cb38476f1e1e21ff6d613df4c3`
+- **Current implementation:** `3cc091e0fa3fc3e65fef16382dec25768259e44b`
 
 ### Implemented
 
-- version advanced from `0.3.4-beta` to `0.3.5-beta`;
-- `VERSION` is now the semantic-version source for the generated menu title and TAP filenames;
+- version advanced to `0.3.6-beta`;
+- `VERSION` remains the semantic-version source for generated menu title and TAP filenames;
 - the build derives a seven-character uppercase build ID from the exact Git commit; local dirty builds are marked with a leading `D`;
-- a 3x5 minifont draws `V<core-version> B<build-id>` centered in the free top band once at startup;
-- current release displays `V0.3.5 B91E4FCD`;
-- release assets include both `pac48-0.3.5-beta.tap` and immutable/cache-safe `pac48-0.3.5-beta-b91E4FCD.tap`;
-- structural identity checks fail on hardcoded menu versions, missing HUD stamp wiring, invalid build-id format, non-centered labels, or loss of the Kempston FIRE shortcut.
+- the rejected custom 3x5 minifont was removed;
+- `V<core-version> B<build-id>` is now drawn with the ZX Spectrum ROM/system 8x8 font at `$3C00`, centered in the free top character row;
+- current release displays `V0.3.6 B3CC091E`;
+- release assets include `pac48-0.3.6-beta.tap` and immutable/cache-safe `pac48-0.3.6-beta-b3CC091E.tap`;
+- build identity checks fail if the ROM font is replaced by the old mini-font or if centering/build metadata becomes inconsistent.
 
 ### Acceptance
 
@@ -255,7 +260,8 @@ The control-selection menu polls Kempston port 31 in addition to keys `1..4`. Ac
 - [x] CI proves build ID equals the release commit prefix;
 - [x] versioned and version+build TAP assets are published;
 - [x] build-specific TAP passes fresh-48K load verification;
-- [ ] V3: owner confirms the mini stamp is readable at the top centre and does not interfere with the maze.
+- [x] build guard requires ROM 8x8 system font rather than custom mini-font;
+- [ ] V3: owner confirms `V0.3.6 B3CC091E` is clearly readable in the gameplay screenshot.
 
 ---
 
