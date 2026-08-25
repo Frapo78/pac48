@@ -11,12 +11,18 @@ Player_Update:
     RET Z
 
     ; Validate the leading edge of the full 8x8 actor for every pixel step.
-    ; This is deliberately stronger than the old "aligned node only" check:
-    ; even if orthogonal alignment is ever disturbed, Pac cannot drift through
-    ; a wall while travelling between tile centres.
     CALL Player_CanContinue
     OR A
     JR NZ, .move
+
+    ; If the preferred queued turn is blocked at a dead end, do not freeze Pac
+    ; while another physically-held direction is legal. The common case is a
+    ; diagonal joystick state where the perpendicular turn is blocked but the
+    ; opposite direction is held and should reverse immediately.
+    CALL Player_TryHeldReversal
+    OR A
+    JR NZ, .move
+
     XOR A
     LD (Pac_Dir), A
     RET
@@ -91,6 +97,55 @@ Player_TryRequestedDir:
     LD A, B
     LD (Pac_Dir), A
     LD (Pac_FacingDir), A
+    RET
+
+; Out: A=1 when a held opposite direction was legal and selected, else 0.
+; Called only after the current direction is known to be blocked.
+Player_TryHeldReversal:
+    LD A, (Pac_Dir)
+    CP 1
+    JR Z, .from_up
+    CP 2
+    JR Z, .from_down
+    CP 3
+    JR Z, .from_left
+    CP 4
+    JR Z, .from_right
+    XOR A
+    RET
+
+.from_up:
+    LD A, (Input_HeldMask)
+    BIT 2, A                       ; DOWN
+    JR Z, .none
+    LD A, 2
+    JR .apply
+.from_down:
+    LD A, (Input_HeldMask)
+    BIT 3, A                       ; UP
+    JR Z, .none
+    LD A, 1
+    JR .apply
+.from_left:
+    LD A, (Input_HeldMask)
+    BIT 0, A                       ; RIGHT
+    JR Z, .none
+    LD A, 4
+    JR .apply
+.from_right:
+    LD A, (Input_HeldMask)
+    BIT 1, A                       ; LEFT
+    JR Z, .none
+    LD A, 3
+
+.apply:
+    LD (Pac_Dir), A
+    LD (Pac_ReqDir), A
+    LD (Pac_FacingDir), A
+    CALL Player_CanContinue
+    RET
+.none:
+    XOR A
     RET
 
 ; Out: A=1 when the next one-pixel step keeps the complete 8x8 player box in
@@ -190,8 +245,6 @@ Player_CanContinue:
 
 ; In: D/E = screen pixel coordinate.
 ; Out: A=1 walkable, A=0 wall/outside.
-; Converts the sampled pixel to maze tile coordinates then delegates to the
-; canonical maze collision source of truth.
 Player_PointCanMove:
     LD A, D
     SRL A
@@ -261,8 +314,6 @@ Player_LoadTile:
     RET
 
 ; Out: D/E = maze tile containing the centre of the 8x8 player.
-; Pellet pickup is centre-based so entering from left/right/up/down behaves
-; symmetrically instead of depending on the top-left sprite anchor.
 Player_LoadCenterTile:
     LD A, (Pac_PixelX)
     ADD A, 4
@@ -282,7 +333,6 @@ Player_LoadCenterTile:
     RET
 
 ; Consume the pellet under the player centre, if present.
-; Out: A=1 when a pellet changed to empty, A=0 otherwise.
 Player_ConsumeCurrentPellet:
     CALL Player_LoadCenterTile
     JP Pellet_ConsumeAt
