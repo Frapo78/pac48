@@ -1,10 +1,12 @@
 # PAC48 Architecture
 
-This document distinguishes the **current implementation** from the **accepted target architecture**.
+This document describes the architecture currently implemented in `main`.
 
 - Coding-agent rules: `AGENTS.md`
 - Canonical backlog: `docs/TODO.md`
-- Rendering decision and research: `docs/adr/0001-rendering-architecture.md`
+- Rendering decision/research: `docs/adr/0001-rendering-architecture.md`
+- Persistent incident/regression memory: `docs/INCIDENTS.md`
+- Continuous development history: `CHANGELOG.md`
 
 ## Target machine
 
@@ -13,14 +15,14 @@ This document distinguishes the **current implementation** from the **accepted t
 - `ORG 32768` (`$8000`)
 - Bitmap screen at `$4000`
 - Attribute memory at `$5800`
-- Real 48K hardware compatibility is mandatory
+- Real 48K hardware compatibility mandatory
 - No 128K banking or 128K-only runtime feature
 
-Code and game data should remain in upper RAM (`$8000+`) unless a measured reason justifies another location. Screen RAM is contended and should be touched only by bounded video work.
+Code, renderer state, generated sprite data, and lookup tables remain in upper RAM (`$8000+`). Screen RAM is contended and is touched only by bounded video/render work.
 
 ## Coordinate spaces
 
-PAC48 uses several coordinate spaces. They must not be mixed implicitly.
+PAC48 uses distinct coordinate spaces and must not mix them implicitly.
 
 ### Maze coordinates
 
@@ -33,261 +35,249 @@ PAC48 uses several coordinate spaces. They must not be mixed implicitly.
 
 - 32x24 cells
 - one cell = 8x8 pixels
-- maze currently begins at `Maze_OffsetX=2`, `Maze_OffsetY=2`
+- maze offset: `Maze_OffsetX=2`, `Maze_OffsetY=2`
 
 ### Screen pixel coordinates
 
 - 256x192 pixels
-- `Pac_PixelX`, `Pac_PixelY` are current player pixel coordinates
-- actor movement may be sub-cell while collision decisions remain maze/tile based
+- `Pac_PixelX`, `Pac_PixelY` are player pixel coordinates
+- movement is sub-cell while collision/turn decisions remain grid aligned
 
 ### Bitmap addresses
 
-Raw ZX Spectrum display addresses are a video-layer concern. Gameplay modules should not manipulate them directly.
+Raw ZX Spectrum display addresses are owned by video/render code only.
 
-## Current implementation
-
-The code in `main` currently works approximately as follows:
+## Current startup
 
 ```text
-startup
-  -> menu
-  -> clear screen
-  -> draw maze
-  -> enable interrupts
-
-frame
-  -> HALT
-  -> read input
-  -> update player
-  -> begin frame
-  -> redraw complete maze
-  -> draw player
-  -> end frame
+DI
+set stack
+Menu_Run
+Video_Clear
+Video_InitLineTable
+Maze_Draw                 # full persistent background once
+Render_Init
+Render_Prepare            # prepare first actor descriptor
+EI
 ```
 
-Current useful foundations:
+`Video_InitLineTable` fills a 192-entry (384-byte) table in upper RAM with the base bitmap address of every scanline.
 
-- `Input_Read` abstracts keyboard/Kempston/Sinclair controls.
-- `Pac_ReqDir` buffers requested direction.
-- direction changes occur only when the player is aligned to the 8x8 grid.
-- `Maze_CanMove` owns wall/out-of-map checks.
-- player position is updated in pixels.
-- directional 8x8 animation frames exist.
-- `Video_DrawSpritePx` can position an 8x8 frame at arbitrary pixel X/Y.
+## Current frame pipeline
 
-Current rendering liabilities:
+```text
+HALT
+Render_Commit
+Input_Read
+Player_Update
+Video_BeginFrame
+Render_Prepare
+Video_EndFrame
+JP MainLoop
+```
 
-- the whole 28x20 maze is rebuilt every frame;
-- sprite rows are shifted at runtime;
-- `Video_DrawSpritePx` writes shifted bytes destructively rather than masking them over the background;
-- the full-maze redraw is effectively being used as an expensive background restore mechanism;
-- logic and time-critical screen work are not separated;
-- attribute ownership for moving sprites is not stable.
+The order is intentional.
 
-These are migration targets, not design requirements.
+### Commit phase
 
-## Accepted target architecture
+`Render_Commit` performs bounded screen work:
 
-ADR 0001 defines the target renderer. The important design is summarized here.
+1. restore maze cells touched by actors in the previously displayed frame;
+2. draw the already-prepared masked player sprite;
+3. promote the newly prepared dirty-cell list for the next commit.
 
-### Persistent background
+### Update/prepare phase
+
+After commit, the engine:
+
+1. polls logical input;
+2. updates player simulation/collision;
+3. advances frame state;
+4. selects animation frame and horizontal phase;
+5. prepares the next sprite pointer/coordinates;
+6. builds the next dirty-cell set.
+
+This keeps gameplay/bookkeeping out of the time-critical screen-write phase.
+
+## Persistent background model
 
 `Maze_Map` is the source of truth for the playfield.
 
-Maze cells own persistent state such as:
+Maze cells currently represent:
 
 - wall
 - pellet
 - empty path
-- later energizer/door/spawn/tunnel state
 
-The full maze is drawn when a level starts. During gameplay only changed/touched cells are restored.
+Later cell types such as energizers, doors, spawn zones, or tunnels remain maze-owned.
 
-### Actor logic
+`Maze_Draw` is a level/startup operation. Normal frames use `Maze_DrawCell` only for dirty restoration.
 
-Player and future enemy modules own simulation state only:
+An arbitrary-position 8x8 actor touches at most four 8x8 maze cells. `render.asm` stores a bounded list of unique dirty cell coordinates rather than maintaining a framebuffer.
+
+## Player simulation
+
+`src/player.asm` owns simulation only:
 
 - pixel position
-- logical direction
-- requested direction
-- animation state
-- movement timers/speed
-- collision decisions
+- active/requested direction
+- grid alignment
+- candidate next tile
+- maze collision requests
+- synchronized maze coordinate
 
-After migration, gameplay modules should not draw themselves directly into screen RAM.
+It contains no raw screen writes and does not choose a low-level renderer routine.
 
-### Rendering layer
+## Renderer
 
-A dedicated `render.asm` module is the accepted destination for frame composition.
+`src/render.asm` owns frame composition.
 
-Responsibilities:
+Current responsibilities:
 
-- maintain previous/current dirty-cell lists;
-- build actor render descriptors;
-- select animation frame and horizontal pre-shift phase;
-- restore dirty maze cells;
-- draw masked actor sprites;
-- expose `Render_Prepare` and `Render_Commit` style interfaces.
+- prepare player render descriptor (`x`, `y`, generated sprite pointer, horizontal phase);
+- choose directional animation frame;
+- build de-duplicated dirty-cell list;
+- restore previous dirty cells from `Maze_Map`;
+- composite masked 8x8 actor data;
+- keep attributes outside the actor hot path.
 
-`video.asm` remains lower level:
+Future enemies should extend the actor-descriptor/dirty-list model rather than draw directly.
 
-- screen clear
-- attribute/tile primitive
-- screen-line address table
-- low-level masked scanline/cell routines
+## Sprite asset representation
 
-### Sprite representation
+Canonical player art remains in `src/sprites.asm`.
 
-Actor sprites remain 8x8 at baseline.
+During `./tools/build.sh`, `tools/gen_shifted_sprites.py` generates:
 
-Each canonical frame is expanded to eight horizontal phases for one-pixel movement. Each phase contains image and mask bytes suitable for:
+```text
+src/generated/pac_shifted.asm
+```
+
+for all 20 canonical directional frames.
+
+Each frame expands to eight horizontal phases, giving 160 generated sprite phases total. Each generated scanline stores:
+
+```text
+maskL, imageL, maskR, imageR
+```
+
+The renderer uses:
 
 ```text
 screen = (screen AND mask) OR image
 ```
 
-The hot renderer must not perform repeated bit shifting for every sprite row.
+The hot path performs no source-row bit shifting.
 
-Generated phase data should be reproducible at build time from compact source frames.
+Generated assembly is ignored by Git and must never be edited manually.
 
-### Screen address lookup
+## Screen-address lookup
 
-Use a 192-entry table of screen-line base addresses (384 bytes).
+`Video_LineAddrTable` contains 192 word addresses (384 bytes), initialized once at startup.
 
-The renderer obtains a line address from Y and adds `x >> 3` for the byte column. An aligned (`x & 7 == 0`) fast path is encouraged.
+`Video_GetLineAddress` returns the byte-0 address for a pixel Y coordinate. The renderer then adds `x >> 3` for the screen byte column.
 
-### Dirty restoration
+This removes repeated nonlinear Spectrum address calculations from the actor scanline loop.
 
-An arbitrary-position 8x8 actor touches at most four 8x8 cells.
+## Attribute policy
 
-For each displayed frame:
+Moving actors do not write attribute memory in the baseline renderer.
 
-1. retain the cells touched by actors;
-2. at the next commit, redraw those cells from current `Maze_Map` state;
-3. redraw cells whose persistent maze state changed;
-4. draw the new actor sprites;
-5. record the cells touched by the new actors.
+Current walkable cells use yellow ink on black paper for both pellet and empty states, so the yellow player remains visible while crossing cell boundaries. Walls remain maze-owned.
 
-Do not redraw the entire maze as a normal frame operation.
+Distinct ghost colors are deferred until their clash/restoration policy is explicitly designed and measured.
 
-### Attribute policy
+## Input
 
-Baseline moving actors do not rewrite attributes each frame.
+`Input_Read` returns:
 
-Walkable cells must have an attribute combination that keeps actor bitmap pixels visible. This intentionally prioritizes stable fast rendering over distinct per-actor colors.
+- `0` none
+- `1` up
+- `2` down
+- `3` left
+- `4` right
 
-Per-ghost colors are a later optional extension and must explicitly define clash and restoration behavior.
+Physical paths:
 
-## Target frame pipeline
+- Q/A/O/P + cursor compatibility
+- Kempston
+- Sinclair 1
+- Sinclair 2
 
-The accepted pipeline separates simulation/preparation from time-critical screen writes:
+Historical mapping failure and its regression guard are recorded in `INC-2026-002`.
 
-```text
-Game_Init
-Render_PrepareInitial
+## Register contracts
 
-MainLoop:
-    HALT
-    Render_Commit
-    Input_Read
-    Game_Update
-    Render_Prepare
-    JP MainLoop
+Public routines must document inputs, outputs, clobbers/preservation, and coordinate space.
+
+The original maze coordinate corruption caused by implicit `DE` ownership is preserved as incident `INC-2026-001`. `Video_DrawTile`, `Maze_DrawTileAtOffset`, and `Maze_DrawAtOffset` now explicitly preserve the coordinate register contract relied on by callers.
+
+## Build architecture
+
+Canonical build:
+
+```sh
+./tools/build.sh
 ```
 
-`Render_Commit` should do only bounded video-memory work using descriptors prepared in the previous frame.
+Pipeline:
 
-`Game_Update`/`Render_Prepare` can spend the rest of the frame on uncontended game data without extending the critical video-write section.
+1. generate masked pre-shifted sprite assembly;
+2. validate maze and generated sprite structure;
+3. assemble with `sjasmplus`;
+4. enforce current binary/headroom budget;
+5. create TAP and versioned TAP.
 
-The exact routine names may evolve. The phase separation is architectural.
+Current binary ceiling is 28,672 bytes from `$8000`, reserving 4 KiB of upper-RAM headroom for stack/runtime safety. This is a guardrail, not an assertion that all remaining RAM is otherwise free.
 
-## Timing target
+## Performance target
 
-Primary presentation target: approximately 50 Hz, one actor presentation per ULA interrupt.
+Primary presentation target: approximately 50 Hz.
 
-Engineering budget for the baseline renderer:
+ADR 0001 engineering targets:
 
-- common-case `Render_Commit`: target <= about 12,000 T-states;
-- roughly 14,000 T-states is a warning threshold for top-border-only rendering on a 48K timing model;
-- measure worst case with player plus planned enemy count and maximum dirty-cell set.
+- common-case `Render_Commit` around/below 12,000 T-states;
+- roughly 14,000 T-states is a warning threshold;
+- test worst case with planned actor count and dirty-cell count.
 
-If a clean dirty/preshift implementation cannot hold a stable 50 Hz rate after profiling, use a deliberate fixed 25 Hz mode rather than irregular frame-rate collapse.
+These timings are not yet verified and remain tracked by `P48-014`.
+
+If a verified clean implementation cannot maintain stable 50 Hz, prefer a deliberate fixed 25 Hz mode over irregular frame collapse.
 
 ## Module ownership
 
-### `src/main.asm`
+- `src/main.asm` - entry/setup/frame orchestration only.
+- `src/config.asm` - compile-time hardware/constants.
+- `src/memory.asm` - persistent game/renderer state and line LUT storage.
+- `src/menu.asm` - startup/control selection.
+- `src/input.asm` - physical controls -> logical input.
+- `src/video.asm` - low-level Spectrum screen primitives/address LUT.
+- `src/maze.asm` - maze state/collision/background restoration.
+- `src/player.asm` - player simulation only.
+- `src/render.asm` - frame preparation/commit, dirty lists, masked composition.
+- `src/sprites.asm` - canonical sprite/background bitmap data.
+- `src/generated/pac_shifted.asm` - generated actor phase/mask data.
+- future `src/enemy.asm` - enemy simulation only.
 
-Entry point, include order, setup, high-level frame orchestration only.
+## Engineering memory system
 
-### `src/config.asm`
+Four files have intentionally different roles:
 
-Global compile-time hardware/constants only.
+- `docs/TODO.md` - what remains and acceptance criteria;
+- `docs/INCIDENTS.md` - failures/root causes/regression guards, retained permanently;
+- `CHANGELOG.md` - what changed over time, updated continuously under `Unreleased`;
+- `docs/adr/` - durable architecture decisions and rejected alternatives.
 
-### `src/memory.asm`
-
-Persistent game/runtime state. Do not silently reorder state that may be address-sensitive.
-
-### `src/menu.asm`
-
-Startup menu and control selection. Existing ROM text calls are tolerated only in the menu.
-
-### `src/input.asm`
-
-Physical keyboard/joystick polling to logical input enum. Gameplay must not read ports directly.
-
-### `src/maze.asm`
-
-Maze cell constants, `Maze_Map`, cell lookup, collision, cell/background restoration data.
-
-### `src/player.asm`
-
-Player simulation: position, requested direction, movement, animation choice. Direct drawing is legacy behavior to be removed during migration.
-
-### `src/sprites.asm`
-
-Canonical/generated sprite data and frame/phase tables. No gameplay logic.
-
-### future `src/render.asm`
-
-Frame composition, dirty lists, actor render descriptors, `Render_Prepare`, `Render_Commit`, masked sprite composition.
-
-### future `src/enemy.asm`
-
-Enemy simulation only. It should submit actor render data rather than owning low-level screen code.
-
-## Register-interface rule
-
-Every public assembly routine must document:
-
-- inputs
-- outputs
-- clobbered registers
-- preserved registers when callers rely on them
-- coordinate space
-
-Do not rely on undocumented preservation. The existing `DE` corruption finding in maze/video code is tracked as `P48-001` precisely because the interface contract was implicit.
+Agents must consult the incident registry before editing related modules. Resolved incidents are never deleted because they are part of the project's anti-regression memory.
 
 ## Optimization policy
 
 Preferred order:
 
 1. correct behavior;
-2. dirty restoration;
-3. pre-shifted masked sprites;
-4. screen-line lookup table;
-5. measure T-states;
-6. optimize hot loops based on evidence.
+2. verify dirty restoration/masked compositing;
+3. measure T-states and memory;
+4. optimize measured hot loops;
+5. only then consider more aggressive Spectrum-specific techniques.
 
-Do not begin with beam racing, floating-bus synchronization, stack-as-screen rendering, broad self-modifying code, or a full software back buffer. Those techniques require a new ADR if profiling later proves they are necessary.
-
-## Migration
-
-The current engine is not to be rewritten in one step.
-
-`docs/TODO.md` defines independently verifiable migration tasks. During the transition some legacy draw routines may remain, but new features must not add further dependence on:
-
-- full-maze redraw each frame;
-- runtime sprite shifting as the final hot path;
-- destructive opaque byte writes for actors;
-- direct screen ownership inside player/enemy logic.
+Beam racing, floating-bus synchronization, stack-as-screen rendering, broad self-modifying code, or a full software back buffer require a new ADR if proposed as core architecture.
