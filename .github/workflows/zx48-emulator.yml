@@ -36,6 +36,10 @@ jobs:
         env:
           ZENZX_BIN: /tmp/zenzx/zenzx-headless
         run: bash tools/run_zenzx_smoke.sh
+      - name: Validate screenshot checker
+        run: python -m unittest discover -s tests -p 'test_zenzx_capture.py' -v
+      - name: Validate actual emulated screen (fail on black)
+        run: python tools/check_zenzx_capture.py build/zenzx/*.png
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
