@@ -38,6 +38,12 @@ jobs:
           python tools/make_zenzx_probe.py build/zenzx-probe/probe.scr
           /tmp/zenzx/zenzx-headless -model=48k -scr=build/zenzx-probe/probe.scr -frames=1 -shot-dir=build/zenzx-probe -shot-prefix=probe
           python tools/check_zenzx_capture.py build/zenzx-probe/*.png
+      - name: Verify raw Z80 execution and screen writes
+        run: |
+          mkdir -p build/zenzx-boot-probe
+          python tools/make_zenzx_boot_probe.py build/zenzx-boot-probe/boot.bin
+          /tmp/zenzx/zenzx-headless -model=48k -bin=build/zenzx-boot-probe/boot.bin -binaddr=0x8000 -frames=3 -shot-dir=build/zenzx-boot-probe -shot-prefix=boot
+          python tools/check_zenzx_capture.py build/zenzx-boot-probe/*.png
       - name: Run 48K visual smoke test
         env:
           ZENZX_BIN: /tmp/zenzx/zenzx-headless
@@ -56,3 +62,4 @@ jobs:
           path: |
             build/zenzx/
             build/zenzx-probe/
+            build/zenzx-boot-probe/
