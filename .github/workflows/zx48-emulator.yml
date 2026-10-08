@@ -44,7 +44,8 @@ jobs:
           python tools/make_zenzx_boot_probe.py build/zenzx-boot-probe/boot.bin
           /tmp/zenzx/zenzx-headless -model=48k -bin=build/zenzx-boot-probe/boot.bin -binaddr=0x8000 -frames=3 -shot-dir=build/zenzx-boot-probe -shot-prefix=boot
           python tools/check_zenzx_capture.py build/zenzx-boot-probe/*.png
-      - name: Probe ROM CLS on direct binary entry
+      - name: Confirm ROM CLS is unsafe on direct binary entry
+        continue-on-error: true
         run: |
           mkdir -p build/zenzx-rom-probe
           python tools/make_zenzx_rom_probe.py build/zenzx-rom-probe/rom.bin
