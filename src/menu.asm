@@ -1,7 +1,7 @@
 Menu_Run:
-    ; pulisci schermo e resetta cursore ROM
-    CALL $0DAF               ; ROM CLS
-    CALL Video_Clear         ; azzera bitmap/attributi
+    ; Clear the display without invoking ROM CLS: direct binary boot does
+    ; not initialize the BASIC workspace required by ROM screen routines.
+    CALL Video_Clear
 
     ; Version comes from generated/build_info.asm, which itself comes from
     ; the canonical VERSION file. Do not hardcode a semantic version here.

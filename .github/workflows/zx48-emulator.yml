@@ -32,10 +32,40 @@ jobs:
           git clone --depth 1 https://github.com/ha1tch/zenzx.git /tmp/zenzx
           (cd /tmp/zenzx && bash build_headless.sh)
           test -x /tmp/zenzx/zenzx-headless
+      - name: Verify emulator screen capture independently
+        run: |
+          mkdir -p build/zenzx-probe
+          python tools/make_zenzx_probe.py build/zenzx-probe/probe.scr
+          /tmp/zenzx/zenzx-headless -model=48k -scr=build/zenzx-probe/probe.scr -frames=1 -shot-dir=build/zenzx-probe -shot-prefix=probe
+          python tools/check_zenzx_capture.py build/zenzx-probe/*.png
+      - name: Verify raw Z80 execution and screen writes
+        run: |
+          mkdir -p build/zenzx-boot-probe
+          python tools/make_zenzx_boot_probe.py build/zenzx-boot-probe/boot.bin
+          /tmp/zenzx/zenzx-headless -model=48k -bin=build/zenzx-boot-probe/boot.bin -binaddr=0x8000 -frames=3 -shot-dir=build/zenzx-boot-probe -shot-prefix=boot
+          python tools/check_zenzx_capture.py build/zenzx-boot-probe/*.png
+      - name: Confirm ROM CLS is unsafe on direct binary entry
+        continue-on-error: true
+        run: |
+          mkdir -p build/zenzx-rom-probe
+          python tools/make_zenzx_rom_probe.py build/zenzx-rom-probe/rom.bin
+          /tmp/zenzx/zenzx-headless -model=48k -bin=build/zenzx-rom-probe/rom.bin -binaddr=0x8000 -frames=5 -shot-dir=build/zenzx-rom-probe -shot-prefix=rom
+          python tools/check_zenzx_capture.py build/zenzx-rom-probe/*.png
+      - name: Diagnose early PAC48 screen transitions
+        run: |
+          mkdir -p build/zenzx-early
+          /tmp/zenzx/zenzx-headless -model=48k -bin=build/pac48.bin -binaddr=0x8000 -frames=12 -shot-interval=1 -shot-dir=build/zenzx-early -shot-prefix=early
+          for capture in build/zenzx-early/*.png; do
+            python tools/check_zenzx_capture.py "$capture" || true
+          done
       - name: Run 48K visual smoke test
         env:
           ZENZX_BIN: /tmp/zenzx/zenzx-headless
         run: bash tools/run_zenzx_smoke.sh
+      - name: Validate screenshot checker
+        run: python -m unittest discover -s tests -p 'test_zenzx_capture.py' -v
+      - name: Validate actual emulated screen (fail on black)
+        run: python tools/check_zenzx_capture.py build/zenzx/*.png
       - name: Upload emulator evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -45,3 +75,7 @@ jobs:
           retention-days: 7
           path: |
             build/zenzx/
+            build/zenzx-probe/
+            build/zenzx-boot-probe/
+            build/zenzx-early/
+            build/zenzx-rom-probe/
