@@ -8,6 +8,14 @@ AI agents must update `Unreleased` whenever they make a meaningful code, archite
 
 ## Unreleased
 
+### Fixed
+
+- Replaced the menu's unsafe direct-boot ROM `CLS` call with internal `Video_Clear`; ZenZX headless now captures a non-monochrome frame after 120 frames (Actions run 37768876331).
+
+### Verification
+
+- Added independent `.scr`, raw Z80 boot, and ROM-CLS probes; early-frame captures and a PNG pixel-variation gate. The gate does not yet validate menu text or gameplay input (see `docs/EMULATOR-CI.md`).
+
 ### Added
 
 - Dedicated `src/render.asm` frame-composition module with separate `Render_Prepare` and `Render_Commit` phases.
