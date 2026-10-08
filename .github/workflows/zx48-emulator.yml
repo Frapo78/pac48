@@ -32,6 +32,12 @@ jobs:
           git clone --depth 1 https://github.com/ha1tch/zenzx.git /tmp/zenzx
           (cd /tmp/zenzx && bash build_headless.sh)
           test -x /tmp/zenzx/zenzx-headless
+      - name: Verify emulator screen capture independently
+        run: |
+          mkdir -p build/zenzx-probe
+          python tools/make_zenzx_probe.py build/zenzx-probe/probe.scr
+          /tmp/zenzx/zenzx-headless -model=48k -scr=build/zenzx-probe/probe.scr -frames=1 -shot-dir=build/zenzx-probe -shot-prefix=probe
+          python tools/check_zenzx_capture.py build/zenzx-probe/*.png
       - name: Run 48K visual smoke test
         env:
           ZENZX_BIN: /tmp/zenzx/zenzx-headless
@@ -49,3 +55,4 @@ jobs:
           retention-days: 7
           path: |
             build/zenzx/
+            build/zenzx-probe/
