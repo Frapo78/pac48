@@ -44,6 +44,13 @@ jobs:
           python tools/make_zenzx_boot_probe.py build/zenzx-boot-probe/boot.bin
           /tmp/zenzx/zenzx-headless -model=48k -bin=build/zenzx-boot-probe/boot.bin -binaddr=0x8000 -frames=3 -shot-dir=build/zenzx-boot-probe -shot-prefix=boot
           python tools/check_zenzx_capture.py build/zenzx-boot-probe/*.png
+      - name: Diagnose early PAC48 screen transitions
+        run: |
+          mkdir -p build/zenzx-early
+          /tmp/zenzx/zenzx-headless -model=48k -bin=build/pac48.bin -binaddr=0x8000 -frames=12 -shot-interval=1 -shot-dir=build/zenzx-early -shot-prefix=early
+          for capture in build/zenzx-early/*.png; do
+            python tools/check_zenzx_capture.py "$capture" || true
+          done
       - name: Run 48K visual smoke test
         env:
           ZENZX_BIN: /tmp/zenzx/zenzx-headless
@@ -63,3 +70,4 @@ jobs:
             build/zenzx/
             build/zenzx-probe/
             build/zenzx-boot-probe/
+            build/zenzx-early/
